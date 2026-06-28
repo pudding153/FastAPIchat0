@@ -44,10 +44,9 @@ async def chat_endpoint(req: Request):
         model="gemini-3.1-flash-lite",
         config=ai_config
 )
-    talk.append({"role":"model","parts":[{"text":response.text}]})
-    #送り返す
-    return{
-        "success":True,
-        "reply":response.text,
-        "history":talk
+ talk.append({"role": "model", "parts": [{"text": response.text}]})
+　return {
+        "success": True,
+        "reply": response.text,
+        "history": talk
     }
