@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from typing import List
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLOgger(__name__)
+logger = logging.getL0gger(__name__)
 #key
 load_dotenv()
 key = os.getenv("GEMINI_API_KEY")
