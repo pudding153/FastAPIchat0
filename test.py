@@ -10,7 +10,7 @@ from google.genai.errors import APIError
 from pydantic import BaseModel
 from typing import List
 
-logging.basicConfig(lebel=logging.INFO)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLOgger(__name__)
 #key
 load_dotenv()
