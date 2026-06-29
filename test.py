@@ -17,6 +17,9 @@ load_dotenv()
 key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=key)
 app = FastAPI()
+class ChatRequest(BaseModel):
+    message:str
+    history:list=[]
 #通信
 app.add_middleware(
     CORSMiddleware,
@@ -32,12 +35,11 @@ def read_root():
 
 #受取  #リクエスト
 @app.post("/api/chat")
-async def chat_endpoint(req: Request):
+async def chat_endpoint(data:ChatRequest):
     try:
-        body = await req.json()
-        message = body.get("message","")
+        message = data.message
+        talk = data.history
 #会話履歴
-        talk = body.get("history", [])
         talk.append({"role":"user","parts":[{"text":message}]})
 #api設定
         s = ("setting")
