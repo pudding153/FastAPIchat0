@@ -18,7 +18,6 @@ load_dotenv()
 key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=key)
 app = FastAPI()
-app.mount("/",StaticFiles(directory="static",html=True),name="static")
 class ChatRequest(BaseModel):
     message:str
     history:list=[]
@@ -75,3 +74,4 @@ async def chat_endpoint(data:ChatRequest):
             "error":"error",
             "detail":str(e)
         }
+app.mount("/",StaticFiles(directory="static",html=True),name="static")
