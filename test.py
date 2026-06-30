@@ -39,6 +39,11 @@ async def chat_endpoint(data:ChatRequest):
     try:
         message = data.message
         talk = data.history
+        #記憶管理
+        if len(talk)>49:
+            talk = talk[-49:]
+            if talk and talk[0].get("role")=="model":
+                talk.pop(0)
 #会話履歴
         talk.append({"role":"user","parts":[{"text":message}]})
 #api設定
