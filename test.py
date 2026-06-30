@@ -1,6 +1,7 @@
 import os
 import logging
 from fastapi import FastAPI,HTTPException,status,Request
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -17,6 +18,7 @@ load_dotenv()
 key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=key)
 app = FastAPI()
+app.mount("/",StaticFiles(directory="static",html=True),name="static")
 class ChatRequest(BaseModel):
     message:str
     history:list=[]
@@ -28,11 +30,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
-
-@app.get("/")
-def read_root():
-    return{"status":"ok"}
-
 #受取  #リクエスト
 @app.post("/api/chat")
 async def chat_endpoint(data:ChatRequest):
