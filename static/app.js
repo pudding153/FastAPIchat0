@@ -7,7 +7,10 @@ async function send(){
         const res = await fetch('/api/chat',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
-            boby:JSON.stringify({massage:txt,history:history})
+            body:JSON.stringify({message:txt,history:history})
         })
         const data = await res.json();
-    }
+        if(data.success){
+            log.innerHTML += `<p>AI: ${data.reply}</p>`;
+            history = data.history;
+    }}
