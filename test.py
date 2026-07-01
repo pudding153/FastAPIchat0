@@ -43,7 +43,7 @@ async def chat_endpoint(data:ChatRequest):
 #会話履歴
         talk.append({"role":"user","parts":[{"text":message}]})
 #api設定
-        s = (優しく常に正確な情報を伝えるAIアシスタント)
+        s = ("優しく常に正確な情報を伝えるAIアシスタント")
         ai_config=types.GenerateContentConfig(
             system_instruction=s,
             max_output_tokens=200
