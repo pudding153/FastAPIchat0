@@ -1,0 +1,75 @@
+body{
+    margin:0;
+    padding:0;
+    font-family:"Hiragino Kaku Gothic ProN","Meiryo",sans-serif;
+    background-color:#f2f4f7;
+    color:#222;
+    height:100vh;
+    display:flex;
+    flex-direction: column;
+
+}
+
+h1{
+    margin:0;
+    padding:16px;
+    background-color: #4a6cf7;
+    color:#ffffff;
+    font-size:20px;
+    text-align:center;
+    box-shadow:0 2px 4px rgba(0,0,0,0.1);
+}
+#log{
+    flex:1;
+    overflow:auto;
+    padding:16px;
+    background-color:#ffffff;
+    display:flex;
+    flex-direction:column;
+    gap: 8px;  
+}
+
+#log .message {
+    max-width: 70%;
+    padding:10px 14px;
+    border-radius: 16px;
+    color: #444;
+}
+#log .message.ai {
+    align-self:flex-start;
+    background-color:#e8eaf0;
+    color:#222;
+}
+
+#input {
+    box-sizing:border-box;
+    width:100%;
+    min-height:48px;
+    max-height:120px;
+    padding:12px;
+    border:1px solid #ccc;
+    border-top:1px solid #ddd;
+    
+    font-size:15px;
+     font-family: inherit;
+    
+     resize:none;
+     outline:none;
+}
+#input:focus{
+    border-color:#4a6cf7;
+}
+#send-button{
+    box-sizing: border-box;
+    width:100%;
+    padding: 12px;
+    border:none;
+    background-color:#4a6cf7;
+    color:#ffffff;
+    font-size:15px;
+    cursor:pointer;
+    transition:background-color 0.2s;
+}
+#send-button:hover{
+    background-color: #3557d6;
+}
