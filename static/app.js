@@ -1,5 +1,13 @@
-let history = [];
+let history = JSON.parse(localStorage.getItem('chat_history')) || [];
 
+window.addEventListener('DOMContentLoaded', () => {
+    history.forEach(talk => {
+        const role = talk.role === 'user' ? '自分' : 'AI';
+        const text = talk.parts[0].text;
+        log.innerHTML += `<p>${role}: ${text}</p>`;
+    });
+     log.scrollTop = log.scrollHeight;
+});
 async function send(){
     const txt = input.value;
     if (!txt) return;
@@ -43,6 +51,7 @@ async function send(){
                 
                 if (parsed.final_history) {
                     history = parsed.final_history;
+                    localStorage.setItem('chat_history', JSON.stringify(history));
                 }
             } catch (e) {
                 console.error("JSONパースエラー:", e, "対象の行:", line);
@@ -54,13 +63,13 @@ async function send(){
         try {
             const parsed = JSON.parse(buffer);
             if (parsed.text) aiPara.innerHTML += parsed.text;
-            if (parsed.final_history) history = parsed.final_history;
-            
-        
+            if (parsed.final_history) {
+                history = parsed.final_history;
+                localStorage.setItem('chat_history', JSON.stringify(history));
+            }
             log.scrollTop = log.scrollHeight;
         } catch (e) {
             console.error("最終バッファのパースエラー:", e);
         }
     }
 }
-
