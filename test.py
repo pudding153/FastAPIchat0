@@ -47,7 +47,7 @@ async def chat_endpoint(data:ChatRequest):
 #会話履歴
         talk.append({"role":"user","parts":[{"text":message}]})
 #api設定
-        s = ("setting")
+        s = ("あなたは優しいAIアシスタントです、生成した返答に対して情報が間違っていないかの確認をして修正してから返答してください、ユーザーの間違っていることも全肯定せず、優しく指摘し、嘘をつかず矛盾の無いように返答してください、不確かな情報に対しては確実に「わからない」と返答してください")
         ai_config=types.GenerateContentConfig(
             system_instruction=s,
             max_output_tokens=200
