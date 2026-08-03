@@ -1,8 +1,11 @@
+import copy
 import os
 import logging
+import json
 from fastapi import FastAPI,HTTPException,status,Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 
 from google import genai
@@ -32,9 +35,10 @@ app.add_middleware(
 #受取  #リクエスト
 @app.post("/api/chat")
 async def chat_endpoint(data:ChatRequest):
+    full_reply = ""
     try:
         message = data.message
-        talk = data.history
+        talk = copy.deepcopy(data.history)
         #記憶管理
         if len(talk)>49:
             talk = talk[-49:]
@@ -48,30 +52,33 @@ async def chat_endpoint(data:ChatRequest):
             system_instruction=s,
             max_output_tokens=200
 )
-        response = client.models.generate_content(
-            contents=talk,
-            model="gemini-3.1-flash-lite",
-            config=ai_config
-)
-        talk.append({"role":"model","parts":[{"text":response.text}]})
-    #送り返す
-        return{
-            "success":True,
-            "reply":response.text,
-            "history":talk
-    }
+        async def event_generator():
+            full_reply = ""
+            try:
+                async for chunk in await client.aio.models.generate_content_stream(
+                    contents=talk,
+                    model="gemini-3.1-flash-lite",
+                    config=ai_config
+                ):
+                    if chunk.text:
+                        full_reply += chunk.text
+                        yield json.dumps({"text":chunk.text},ensure_ascii=False) + "\n"
+                talk.append({"role":"model","parts":[{"text":full_reply}]})
+                yield json.dumps({"final_history":talk}, ensure_ascii=False) + "\n"
+            except Exception as e:
+                logger.error(f"Stream Error:{e}")
+                yield json.dumps({"error":"Stream interrupted"}) + "\n"
+        return StreamingResponse(event_generator(),media_type="application/x-ndjson") 
     except APIError as e:
-        logger.error(f"Gemini API Error:{e}")
-        return{
-            "success":False,
-            "error":"AIerror",
-            "detail":str(e)
-        }
+        logger.error(f"Gemini API Error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "AIerror", "detail": str(e)}
+        )
     except Exception as e:
-        logger.error(f"Unexpected Error:{e}")
-        return{
-            "success":False,
-            "error":"error",
-            "detail":str(e)
-        }
+        logger.error(f"Unexpected Error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "error", "detail": str(e)}
+        )
 app.mount("/",StaticFiles(directory="static",html=True),name="static")
