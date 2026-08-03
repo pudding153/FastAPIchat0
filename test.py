@@ -61,10 +61,10 @@ async def chat_endpoint(data:ChatRequest):
 #会話履歴
 
 #api設定
-        s = ("あなたは優しいAIアシスタントです、返答はすべて必ず２００文字以内でわかりやすく生成してください、検索ツールであるGoogle Searchの使用は必ず１つのリクエストに対して一回までの使用に制限してください、生成した返答に対して情報が間違っていないかの確認をして修正してから返答してください、ユーザーの間違っていることも全肯定せず、優しく指摘し、嘘をつかず矛盾の無いように返答してください、不確かな情報に対しては確実に「わからない」と返答してください")
+        s = ("あなたは優しいAIアシスタントです、返答はすべて必ず300文字以内で生成してください、検索ツールであるGoogle Searchの使用は必ず１つのリクエストに対して一回までの使用に制限してください、生成した返答に対して情報が間違っていないかの確認をして修正してから返答してください、ユーザーの間違っていることも全肯定せず、優しく指摘し、嘘をつかず矛盾の無いように返答してください、不確かな情報に対しては確実に「わからない」と返答してください")
         ai_config=types.GenerateContentConfig(
             system_instruction=s,
-            max_output_tokens=200,
+            max_output_tokens=300,
             tools=[types.Tool(google_search=types.GoogleSearch())]
 )
         async def event_generator():
