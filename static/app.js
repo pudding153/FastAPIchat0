@@ -58,7 +58,22 @@ async function send(){
     const decoder = new TextDecoder();
     let buffer = '';
     
-    let currentAiText = '';
+    let currentAiText = '';       
+    let displayedAiText = '';     
+    let charQueue = [];           
+    let isTyping = false;         
+
+    function typeNextChar() {
+        if (charQueue.length === 0) {
+            isTyping = false;
+            return;
+        }
+        isTyping = true;
+        displayedAiText += charQueue.shift();
+        aiPara.innerHTML = `AI: ${parseMarkdown(displayedAiText)}`;
+        log.scrollTop = log.scrollHeight;
+        setTimeout(typeNextChar, 30);
+    }
 
     while (true) {
         const { value, done } = await reader.read();
@@ -74,8 +89,8 @@ async function send(){
                 const parsed = JSON.parse(line);
                 if (parsed.text) {
                     currentAiText += parsed.text;
-                    aiPara.innerHTML = `AI: ${parseMarkdown(currentAiText)}`;
-                    log.scrollTop = log.scrollHeight;
+                    charQueue.push(...parsed.text);
+                    if (!isTyping) typeNextChar();
                 }
                 
                 if (parsed.final_history) {
@@ -93,13 +108,13 @@ async function send(){
             const parsed = JSON.parse(buffer);
             if (parsed.text) {
                 currentAiText += parsed.text;
-                aiPara.innerHTML = `AI: ${parseMarkdown(currentAiText)}`;
+                charQueue.push(...parsed.text);
+                if (!isTyping) typeNextChar();
             }
             if (parsed.final_history) {
                 history = parsed.final_history;
                 localStorage.setItem('chat_history', JSON.stringify(history));
             }
-            log.scrollTop = log.scrollHeight;
         } catch (e) {
             console.error("最終バッファのパースエラー:", e);
         }
@@ -113,8 +128,6 @@ function clearChat() {
         log.innerHTML = '';                      
     }
 }
-
-let isServerWoken = false;
 
 let isServerWoken = false;
 
