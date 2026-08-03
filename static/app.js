@@ -1,5 +1,23 @@
 let history = JSON.parse(localStorage.getItem('chat_history')) || [];
 
+function parseMarkdown(text){
+    if(!text)return ``;
+       let safeText = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "'");
+
+        safeText = safeText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        safeText = safeText.replace(/__(.*?)__/g, '<strong>$1</strong>');
+
+        safeText = safeText.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        safeText = safeText.replace(/_(.*?)_/g, '<em>$1</em>');
+        safeText = safeText.replace(/\n/g, '<br>');
+        return safeText;
+}
+
 window.addEventListener('DOMContentLoaded', () => {
     history.forEach(talk => {
         const role = talk.role === 'user' ? '自分' : 'AI';
@@ -7,7 +25,7 @@ window.addEventListener('DOMContentLoaded', () => {
         
         const p = document.createElement('p');
         p.className = 'chat-bubble';
-        p.innerText = `${role}: ${text}`;
+        p.innerHTML = `${role}: ${parseMarkdown(text)}`;
         log.appendChild(p);
     });
     log.scrollTop = log.scrollHeight;
@@ -19,7 +37,7 @@ async function send(){
     
     const myPara = document.createElement('p');
     myPara.className = 'chat-bubble';
-    myPara.innerText = `自分: ${txt}`;
+    myPara.innerHTML = `自分: ${parseMarkdown(txt)}`;
     log.appendChild(myPara);
     
     input.value = '';
@@ -39,6 +57,8 @@ async function send(){
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    
+    let currentAiText = '';
 
     while (true) {
         const { value, done } = await reader.read();
@@ -53,7 +73,8 @@ async function send(){
             try {
                 const parsed = JSON.parse(line);
                 if (parsed.text) {
-                    aiPara.innerHTML += parsed.text;
+                    currentAiText += parsed.text;
+                    aiPara.innerHTML = `AI: ${parseMarkdown(currentAiText)}`;
                     log.scrollTop = log.scrollHeight;
                 }
                 
@@ -70,7 +91,10 @@ async function send(){
     if (buffer.trim()) {
         try {
             const parsed = JSON.parse(buffer);
-            if (parsed.text) aiPara.innerHTML += parsed.text;
+            if (parsed.text) {
+                currentAiText += parsed.text;
+                aiPara.innerHTML = `AI: ${parseMarkdown(currentAiText)}`;
+            }
             if (parsed.final_history) {
                 history = parsed.final_history;
                 localStorage.setItem('chat_history', JSON.stringify(history));
