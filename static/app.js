@@ -12,7 +12,6 @@ async function send(){
         body: JSON.stringify({message: txt, history: history})
     });
 
-
     const aiPara = document.createElement('p');
     aiPara.innerHTML = 'AI: ';
     log.appendChild(aiPara);
@@ -32,15 +31,31 @@ async function send(){
         buffer = lines.pop(); 
 
         for (const line of lines) {
+            // 空白行はスキップ
             if (!line.trim()) continue;
-            const parsed = JSON.parse(line);
             
-            if (parsed.text) {
-                aiPara.innerHTML += parsed.text;
+            try {
+                const parsed = JSON.parse(line);
+                
+                if (parsed.text) {
+                    aiPara.innerHTML += parsed.text;
+                }
+                if (parsed.final_history) {
+                    history = parsed.final_history;
+                }
+            } catch (e) {
+                console.error("JSONパースエラー:", e, "対象の行:", line);
             }
-            if (parsed.final_history) {
-                history = parsed.final_history;
-            }
+        }
+    }
+
+    if (buffer.trim()) {
+        try {
+            const parsed = JSON.parse(buffer);
+            if (parsed.text) aiPara.innerHTML += parsed.text;
+            if (parsed.final_history) history = parsed.final_history;
+        } catch (e) {
+            console.error("最終バッファのパースエラー:", e);
         }
     }
 }
