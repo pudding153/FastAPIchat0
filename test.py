@@ -24,7 +24,7 @@ class ChatRequest(BaseModel):
 #通信
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://fastapichat-mmm3.onrender.com/"],
+    allow_origins=["https://fastapichat-mmm3.onrender.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
