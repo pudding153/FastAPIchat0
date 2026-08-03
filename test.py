@@ -40,7 +40,7 @@ async def chat_endpoint(data:ChatRequest):
         message = data.message
         talk = copy.deepcopy(data.history)
         #記憶管理
-     　 talk.append({"role":"user","parts":[{"text":message}]})
+        talk.append({"role":"user","parts":[{"text":message}]})
         MAX_HISTORY_TOKENS = 3500
         def count_approx_tokens(chat_history):
             total = 0
