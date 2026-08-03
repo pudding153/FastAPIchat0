@@ -1,4 +1,5 @@
 let history = [];
+
 async function send(){
     const txt = input.value;
     if (!txt) return;
@@ -24,28 +25,22 @@ async function send(){
 
     while (true) {
         const { value, done } = await reader.read();
-        if (done) break;
+        if (done) break; 
         
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop(); 
-
         for (const line of lines) {
-            if (!line.trim()) continue;
+            if (!line.trim()) continue; 
             
             try {
                 const parsed = JSON.parse(line);
-                
                 if (parsed.text) {
-                    const isAtBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
-
                     aiPara.innerHTML += parsed.text;
-
-                
-                    if (isAtBottom) {
-                        log.scrollTop = log.scrollHeight;
-                    }
+                    log.scrollTop = log.scrollHeight;
                 }
+                
+                
                 if (parsed.final_history) {
                     history = parsed.final_history;
                 }
@@ -68,3 +63,4 @@ async function send(){
         }
     }
 }
+
