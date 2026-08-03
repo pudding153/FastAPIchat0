@@ -40,12 +40,23 @@ async def chat_endpoint(data:ChatRequest):
         message = data.message
         talk = copy.deepcopy(data.history)
         #記憶管理
-        if len(talk)>19:
-            talk = talk[-19:]
-            if talk and talk[0].get("role")=="model":
-                talk.pop(0)
+     　 talk.append({"role":"user","parts":[{"text":message}]})
+        MAX_HISTORY_TOKENS = 4000
+        def count_approx_tokens(chat_history):
+            total = 0
+            for msg in chat_history:
+                parts = msg.get("parts", [])
+                if isinstance(parts, list) and parts:
+                    text = "".join([p.get("text", "") for p in parts if isinstance(p, dict)])
+                    total += len(text)
+            return total
+
+        while count_approx_tokens(talk) > MAX_HISTORY_TOKENS and len(talk) > 0:
+            talk.pop(0)
+        if talk and talk[0].get("role") == "model":
+            talk.pop(0)
 #会話履歴
-        talk.append({"role":"user","parts":[{"text":message}]})
+
 #api設定
         s = ("あなたは優しいAIアシスタントです、返答はすべて必ず２００文字以内でわかりやすく生成してください、検索ツールであるGoogle Searchの使用は必ず１つのリクエストに対して一回までの使用に制限してください、生成した返答に対して情報が間違っていないかの確認をして修正してから返答してください、ユーザーの間違っていることも全肯定せず、優しく指摘し、嘘をつかず矛盾の無いように返答してください、不確かな情報に対しては確実に「わからない」と返答してください")
         ai_config=types.GenerateContentConfig(
