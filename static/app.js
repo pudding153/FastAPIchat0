@@ -4,17 +4,25 @@ window.addEventListener('DOMContentLoaded', () => {
     history.forEach(talk => {
         const role = talk.role === 'user' ? '自分' : 'AI';
         const text = talk.parts[0].text;
-        log.innerHTML += `<p>${role}: ${text}</p>`;
+        
+        const p = document.createElement('p');
+        p.className = 'chat-bubble';
+        p.innerText = `${role}: ${text}`;
+        log.appendChild(p);
     });
-     log.scrollTop = log.scrollHeight;
+    log.scrollTop = log.scrollHeight;
 });
+
 async function send(){
     const txt = input.value;
     if (!txt) return;
     
-    log.innerHTML += `<p>自分: ${txt}</p>`;
-    input.value = '';
+    const myPara = document.createElement('p');
+    myPara.className = 'chat-bubble';
+    myPara.innerText = `自分: ${txt}`;
+    log.appendChild(myPara);
     
+    input.value = '';
     log.scrollTop = log.scrollHeight;
     
     const res = await fetch('/api/chat',{
@@ -24,6 +32,7 @@ async function send(){
     });
 
     const aiPara = document.createElement('p');
+    aiPara.className = 'chat-bubble';
     aiPara.innerHTML = 'AI: ';
     log.appendChild(aiPara);
 
@@ -47,7 +56,6 @@ async function send(){
                     aiPara.innerHTML += parsed.text;
                     log.scrollTop = log.scrollHeight;
                 }
-                
                 
                 if (parsed.final_history) {
                     history = parsed.final_history;
@@ -73,6 +81,7 @@ async function send(){
         }
     }
 }
+
 function clearChat() {
     if (confirm('これまでの会話履歴をすべて削除しますか？')) {
         localStorage.removeItem('chat_history'); 
