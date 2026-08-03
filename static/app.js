@@ -113,3 +113,24 @@ function clearChat() {
         log.innerHTML = '';                      
     }
 }
+
+let isServerWoken = false;
+
+let isServerWoken = false;
+
+async function wakeUpServer() {
+    if (isServerWoken) return;
+    isServerWoken = true;
+
+    console.log("起動");
+    
+    try {
+        await fetch('/api/ping');
+        console.log("サーバーが正常に起動しました。");
+    } catch (e) {
+        isServerWoken = false;
+        console.error("サーバー起動リクエストに失敗しました:", e);
+    }
+}
+input.addEventListener('focus', wakeUpServer);
+input.addEventListener('click', wakeUpServer);
