@@ -10,14 +10,13 @@ body {
 
 .top-bar {
     display: flex;
-    justify-content: flex-end; 
-    margin-bottom: 10px;       
+    justify-content: flex-end;
+    margin-bottom: 10px;
 }
-
 
 .clear-button {
     padding: 6px 12px;
-    background-color: #dc3545; 
+    background-color: #dc3545;
     color: white;
     border: none;
     border-radius: 4px;
@@ -27,7 +26,7 @@ body {
 }
 
 .clear-button:hover {
-    background-color: #bd2130; 
+    background-color: #bd2130;
 }
 
 #log {
@@ -38,11 +37,21 @@ body {
     padding: 15px;
     background-color: #f9f9f9;
     margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
-#log p {
-    margin: 8px 0;
+.chat-bubble {
+    background-color: #e5e5e5; 
+    color: #000;
+    padding: 10px 14px;        
+    border-radius: 12px;       
+    margin: 0;
     line-height: 1.4;
+    align-self: flex-start;    
+    max-width: 85%;            
+    word-break: break-all;
 }
 
 #input {
