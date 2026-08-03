@@ -33,6 +33,9 @@ app.add_middleware(
     allow_headers=["*"]
 )
 #受取  #リクエスト
+@app.get("/api/ping")
+async def ping_endpoint():
+    return {"status": "ok"}
 @app.post("/api/chat")
 async def chat_endpoint(data:ChatRequest):
     full_reply = ""
