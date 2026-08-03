@@ -40,8 +40,8 @@ async def chat_endpoint(data:ChatRequest):
         message = data.message
         talk = copy.deepcopy(data.history)
         #記憶管理
-        if len(talk)>29:
-            talk = talk[-29:]
+        if len(talk)>19:
+            talk = talk[-19:]
             if talk and talk[0].get("role")=="model":
                 talk.pop(0)
 #会話履歴
