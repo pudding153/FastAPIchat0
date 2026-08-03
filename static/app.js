@@ -73,3 +73,10 @@ async function send(){
         }
     }
 }
+function clearChat() {
+    if (confirm('これまでの会話履歴をすべて削除しますか？')) {
+        localStorage.removeItem('chat_history'); 
+        history = [];                           
+        log.innerHTML = '';                      
+    }
+}
