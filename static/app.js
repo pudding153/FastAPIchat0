@@ -175,3 +175,5 @@ async function wakeUpServer() {
 }
 input.addEventListener('focus', wakeUpServer);
 input.addEventListener('click', wakeUpServer);
+
+window.addEventListener('DOMContentLoaded', wakeUpServer);
