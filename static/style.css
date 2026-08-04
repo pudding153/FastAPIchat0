@@ -64,6 +64,7 @@ body {
     resize: none;
     box-sizing: border-box;
     margin-bottom: 8px;
+    font-size: 16px;
 }
 
 #send-button {
