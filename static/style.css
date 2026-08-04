@@ -4,8 +4,9 @@ body {
     font-family: sans-serif;
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: 100dvh; 
     box-sizing: border-box;
+    overflow: hidden;
 }
 
 .top-bar {
