@@ -22,6 +22,9 @@ key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=key)
 app = FastAPI()
 class ChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=400, description="ユーザーからの入力メッセージ")
+    history: list = []
+class ChatRequest(BaseModel):
     message:str
     history:list=[]
 #通信
