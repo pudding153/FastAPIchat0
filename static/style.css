@@ -1,12 +1,12 @@
 body {
     margin: 0;
-    padding: 20px;
+    padding: calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom)) 20px;
     font-family: sans-serif;
     display: flex;
     flex-direction: column;
     height: 100dvh; 
     box-sizing: border-box;
-    overflow: hidden;
+    overflow: hidden; 
 }
 
 .top-bar {
