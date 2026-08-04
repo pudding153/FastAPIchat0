@@ -24,9 +24,6 @@ app = FastAPI()
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=400, description="ユーザーからの入力メッセージ")
     history: list = []
-class ChatRequest(BaseModel):
-    message:str
-    history:list=[]
 #通信
 app.add_middleware(
     CORSMiddleware,
