@@ -57,23 +57,7 @@ async function send(){
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    
     let currentAiText = '';       
-    let displayedAiText = '';     
-    let charQueue = [];           
-    let isTyping = false;         
-
-    function typeNextChar() {
-        if (charQueue.length === 0) {
-            isTyping = false;
-            return;
-        }
-        isTyping = true;
-        displayedAiText += charQueue.shift();
-        aiPara.innerHTML = `AI: ${parseMarkdown(displayedAiText)}`;
-        log.scrollTop = log.scrollHeight;
-        setTimeout(typeNextChar, 30);
-    }
 
     while (true) {
         const { value, done } = await reader.read();
@@ -89,8 +73,8 @@ async function send(){
                 const parsed = JSON.parse(line);
                 if (parsed.text) {
                     currentAiText += parsed.text;
-                    charQueue.push(...parsed.text);
-                    if (!isTyping) typeNextChar();
+                    aiPara.innerHTML = `AI: ${parseMarkdown(currentAiText)}`;
+                    log.scrollTop = log.scrollHeight;
                 }
                 
                 if (parsed.final_history) {
@@ -108,8 +92,8 @@ async function send(){
             const parsed = JSON.parse(buffer);
             if (parsed.text) {
                 currentAiText += parsed.text;
-                charQueue.push(...parsed.text);
-                if (!isTyping) typeNextChar();
+                aiPara.innerHTML = `AI: ${parseMarkdown(currentAiText)}`;
+                log.scrollTop = log.scrollHeight;
             }
             if (parsed.final_history) {
                 history = parsed.final_history;
@@ -129,7 +113,6 @@ function clearChat() {
     }
 }
 
-
 function undoChat() {
     if (history.length < 2) {
         alert('削除できる会話履歴がありません。');
@@ -143,7 +126,6 @@ function undoChat() {
         localStorage.setItem('chat_history', JSON.stringify(history));
         log.innerHTML = ''; 
 
-       
         history.forEach(talk => {
             const role = talk.role === 'user' ? '自分' : 'AI';
             const text = talk.parts[0].text; 
@@ -175,5 +157,3 @@ async function wakeUpServer() {
 }
 input.addEventListener('focus', wakeUpServer);
 input.addEventListener('click', wakeUpServer);
-
-window.addEventListener('DOMContentLoaded', wakeUpServer);
