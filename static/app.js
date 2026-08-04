@@ -129,7 +129,7 @@ function clearChat() {
     }
 }
 
-// ★【追加機能】最新の会話を1往復分だけ完全に消去する関数
+
 function undoChat() {
     if (history.length < 2) {
         alert('削除できる会話履歴がありません。');
@@ -143,7 +143,7 @@ function undoChat() {
         localStorage.setItem('chat_history', JSON.stringify(history));
         log.innerHTML = ''; 
 
-        // あなたが修正してくれた「parts[0].text」の構造を使って画面に再描画
+       
         history.forEach(talk => {
             const role = talk.role === 'user' ? '自分' : 'AI';
             const text = talk.parts[0].text; 
