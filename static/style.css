@@ -71,13 +71,12 @@ body {
     30% {
         opacity: 1;
     }
-    99% {
+    99.9% {
         mask-image: linear-gradient(135deg, #000 -20%, transparent 30%);
         mask-position: 0% 0%;
     }
     100% {
         mask-image: none;
-        mask-position: 0% 0%;
         transform: translateY(0);
         opacity: 1;
     }
