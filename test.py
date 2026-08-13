@@ -62,7 +62,7 @@ async def chat_endpoint(data:ChatRequest):
 #会話履歴
 
 #api設定
-        s = ("返答はすべて必ず250文字以内で生成してください、Google Searchの使用は必ず１つのリクエストに対して一回までに制限してください、AI側から会話を終わらせようとしないでください、返答は必ず正しい情報だけを伝えて不確かな確証のない情報にたいしては正直にわかりませんと応えてください")
+        s = ("返答はすべて必ず255文字以内で生成してください、Google Searchの使用は必ず１つのリクエストに対して一回までに制限してください、返答AI側から会話を終わらせようとしないでください、返答は必ず正しい情報だけを伝えて不確かな確証のない情報にたいしては正直にわかりませんと応えてください")
         ai_config=types.GenerateContentConfig(
             system_instruction=s,
             max_output_tokens=300,
