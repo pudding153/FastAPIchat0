@@ -72,21 +72,26 @@ async def chat_endpoint(data:ChatRequest):
             full_reply = ""
             try:
                 past_history = talk[:-1] if len(talk) > 1 else []
+
                 chat = client.aio.chats.create(
                     model="gemini-3.1-flash-lite",
                     config=ai_config,
                     history=past_history
                 )
                 
-                response = await chat.send_message_stream(message)
+                response_stream = await chat.send_message_stream(message)
                 
-                async for chunk in response:
+                async for chunk in response_stream:
                     if chunk.text:
                         full_reply += chunk.text
                         yield json.dumps({"text": chunk.text}, ensure_ascii=False) + "\n"
                         
                 talk.append({"role": "model", "parts": [{"text": full_reply}]})
                 yield json.dumps({"final_history": talk}, ensure_ascii=False) + "\n"
+
+            except Exception as e:
+                logger.error(f"Stream Error: {e}")
+                yield json.dumps({"error": "Stream interrupted"}) + "\n"
 
             except Exception as e:
                 logger.error(f"Stream Error: {e}")
