@@ -73,7 +73,7 @@ async def chat_endpoint(data:ChatRequest):
             try:
                 async for chunk in await client.aio.models.generate_content_stream(
                     contents=talk,
-                    model="gemini-3.1-flash-lite",
+                    model="gemini-2.5-flash-lite",
                     config=ai_config
                 ):
                     if chunk.text:
