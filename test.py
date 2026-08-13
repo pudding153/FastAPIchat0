@@ -71,33 +71,19 @@ async def chat_endpoint(data:ChatRequest):
         async def event_generator():
             full_reply = ""
             try:
-                past_history = talk[:-1] if len(talk) > 1 else []
-
-                chat = client.aio.chats.create(
+                async for chunk in await client.aio.models.generate_content_stream(
+                    contents=talk,
                     model="gemini-3.1-flash-lite",
-                    config=ai_config,
-                    history=past_history
-                )
-                
-                response_stream = await chat.send_message_stream(message)
-                
-                async for chunk in response_stream:
+                    config=ai_config
+                ):
                     if chunk.text:
                         full_reply += chunk.text
-                        yield json.dumps({"text": chunk.text}, ensure_ascii=False) + "\n"
-                        
-                talk.append({"role": "model", "parts": [{"text": full_reply}]})
-                yield json.dumps({"final_history": talk}, ensure_ascii=False) + "\n"
-
+                        yield json.dumps({"text":chunk.text},ensure_ascii=False) + "\n"
+                talk.append({"role":"model","parts":[{"text":full_reply}]})
+                yield json.dumps({"final_history":talk}, ensure_ascii=False) + "\n"
             except Exception as e:
-                logger.error(f"Stream Error: {e}")
-                yield json.dumps({"error": "Stream interrupted"}) + "\n"
-
-            except Exception as e:
-                logger.error(f"Stream Error: {e}")
-                yield json.dumps({"error": "Stream interrupted"}) + "\n"
-
-        
+                logger.error(f"Stream Error:{e}")
+                yield json.dumps({"error":"Stream interrupted"}) + "\n"
         return StreamingResponse(event_generator(),media_type="application/x-ndjson") 
     except APIError as e:
         logger.error(f"Gemini API Error: {e}")
