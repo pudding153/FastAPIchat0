@@ -69,24 +69,30 @@ async def chat_endpoint(data:ChatRequest):
             tools=[types.Tool(google_search=types.GoogleSearch())]
 )
         async def event_generator():
+            full_reply = ""
             try:
+                past_history = talk[:-1] if len(talk) > 1 else []
                 chat = client.aio.chats.create(
                     model="gemini-3.1-flash-lite",
                     config=ai_config,
-                    history=talk[:-1] 
+                    history=past_history
                 )
-                full_reply = ""
-                response = await chat.send_message_stream(message) #
                 
-                for chunk in response.stream: #
+                response = await chat.send_message_stream(message)
+                
+                async for chunk in response:
                     if chunk.text:
                         full_reply += chunk.text
                         yield json.dumps({"text": chunk.text}, ensure_ascii=False) + "\n"
+                        
                 talk.append({"role": "model", "parts": [{"text": full_reply}]})
                 yield json.dumps({"final_history": talk}, ensure_ascii=False) + "\n"
+
             except Exception as e:
                 logger.error(f"Stream Error: {e}")
                 yield json.dumps({"error": "Stream interrupted"}) + "\n"
+
+        
         return StreamingResponse(event_generator(),media_type="application/x-ndjson") 
     except APIError as e:
         logger.error(f"Gemini API Error: {e}")
