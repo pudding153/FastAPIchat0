@@ -1,8 +1,9 @@
 <link rel="stylesheet" href="style.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <div class="top-bar">
+    <button class="undo-button" onclick="undoChat()">1手戻る</button>
     <button class="undo-button" onclick="undoChat()">1つ戻る</button>
-    <button class="clear-button" onclick="clearChat()">履歴を削除</button>
+<button class="clear-button" onclick="clearChat()">履歴を削除</button>
 </div>
 
 <!-- 会話履歴表示 -->
@@ -11,3 +12,5 @@
 <!-- 入力欄 -->
 <textarea id="input" placeholder="メッセージを入力..."></textarea>
 <button id="send-button" onclick="send()">送信</button>
+
+<script src="app.js"></script>
