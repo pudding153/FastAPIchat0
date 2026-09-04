@@ -1,4 +1,21 @@
 let history = JSON.parse(localStorage.getItem('chat_history')) || [];
+let currentPrompt = ""; 
+// 1
+window.addEventListener('DOMContentLoaded', () => {
+    const setPromptBtn = document.getElementById('setprompt');
+    const promptInput = document.getElementById('prompt');
+    if (setPromptBtn && promptInput) {
+        setPromptBtn.addEventListener('click', () => {
+            currentPrompt = promptInput.value.trim();
+            if (currentPrompt.length > 30) {
+                alert("プロンプトは30文字以内で入力してください。");
+                return;
+            }
+            alert("プロンプト適応済み");
+        });
+    }
+});
+//  
 
 function parseMarkdown(text){
     if(!text)return ``;
@@ -42,12 +59,17 @@ async function send(){
     
     input.value = '';
     log.scrollTop = log.scrollHeight;
-    
+    //
     const res = await fetch('/api/chat',{
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({message: txt, history: history})
+        body: JSON.stringify({
+            message: txt, 
+            history: history,
+            custom_prompt: currentPrompt
+        })
     });
+    //
 
     const aiPara = document.createElement('p');
     aiPara.className = 'chat-bubble';
