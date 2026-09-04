@@ -139,3 +139,18 @@ margin-bottom: 8px;
 font-size: 16px;
 margin-right: 48px; 
 }
+
+#setprompt {
+width: 100%;
+padding: 12px;
+background-color: #6da6e2;
+color: white;
+border: none;
+border-radius: 4px;
+font-size: 1rem;
+cursor: pointer;
+}
+
+#setprompt:hover {
+background-color: #559ce7;
+}
