@@ -13,7 +13,7 @@ from google import genai
 from google.genai import types
 from google.genai.errors import APIError
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -25,6 +25,7 @@ app = FastAPI()
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=400, description="ユーザーからの入力メッセージ")
     history: list = []
+    custom_prompt: Optional[str] = Field(default="", max_length=30)
 #通信
 app.add_middleware(
     CORSMiddleware,
@@ -63,6 +64,8 @@ async def chat_endpoint(data:ChatRequest):
 
 #api設定
         s = ("返答は必ず250文字以内で生成する。検索ブラウジングの使用は1回リクエストごと必ず1回以下しか使用しないこと。文脈を読んで返答長さを調整する。挨拶や短文のリクエストに対してはある程度短く返答する。矛盾や嘘が無いよう不確かな情報は「わかりません」と答える会話をAI側か終わらせようとしない。むやみに全肯定せず正しい意見伝える。")
+        if data.custom_prompt and data.custom_prompt.strip():
+            s += f"\n\n追加のプロンプト\n{data.custom_prompt.strip()}"
         ai_config=types.GenerateContentConfig(
             system_instruction=s,
             max_output_tokens=300,
