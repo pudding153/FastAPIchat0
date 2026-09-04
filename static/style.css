@@ -126,3 +126,15 @@ transition: background-color 0.2s;
 .undo-button:hover {
 background-color: #5a6268;
 }
+
+#prompt {
+width: 100%;
+height: 40px;
+padding: 8px;
+border: 1px solid #ccc;
+border-radius: 4px;
+resize: none;
+box-sizing: border-box;
+margin-bottom: 8px;
+font-size: 16px;
+}
