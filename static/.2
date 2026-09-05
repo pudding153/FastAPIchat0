@@ -1,4 +1,4 @@
-  async function restoreAuto() {
+async function restoreAuto() {
     const msgEl = document.getElementById("restore-msg");
     const resetCurrent = document.getElementById("reset-current").checked;
     msgEl.className = "restore-msg";
@@ -6,7 +6,7 @@
 
     try {
       const res = await fetch(
-        `/api/token-stats/restore-auto?reset_current=${resetCurrent}&days=30`,
+        `/api/token-stats/restore-auto?reset_current=${resetCurrent}&days=365`,
         { method: "POST" }
       );
       const data = await res.json();
