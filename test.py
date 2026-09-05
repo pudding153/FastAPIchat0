@@ -1,3 +1,4 @@
+
 from pydantic import BaseModel, Field
 import copy
 import os
@@ -8,13 +9,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
-
+ 
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
 from pydantic import BaseModel
 from typing import List, Optional 
-
+ 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 #key
@@ -43,13 +44,14 @@ async def chat_endpoint(data:ChatRequest):
     full_reply = ""
     try:
         message = data.message
-
+ 
         full_history = copy.deepcopy(data.history)
         full_history.append({"role":"user","parts":[{"text":message}]})
-
+ 
         talk = copy.deepcopy(data.history)
-        #記憶管理
         talk.append({"role":"user","parts":[{"text":message}]})
+        #
+ 
         MAX_HISTORY_TOKENS = 3500
         def count_approx_tokens(chat_history):
             total = 0
@@ -59,13 +61,13 @@ async def chat_endpoint(data:ChatRequest):
                     text = "".join([p.get("text", "") for p in parts if isinstance(p, dict)])
                     total += len(text)
             return total
-
+ 
         while count_approx_tokens(talk) > MAX_HISTORY_TOKENS and len(talk) > 0:
             talk.pop(0)
         if talk and talk[0].get("role") == "model":
             talk.pop(0)
 #会話履歴
-
+ 
 #api設定
         s = ("返答は必ず250文字以内で生成する。検索ブラウジングの使用は1回リクエストごと必ず1回以下しか使用しないこと。文脈を読んで返答長さを調整する。挨拶や短文のリクエストに対してはある程度短く返答する。矛盾や嘘が無いよう不確かな情報は「わかりません」と答える会話をAI側か終わらせようとしない。むやみに全肯定せず正しい意見伝える。")
         if data.custom_prompt and data.custom_prompt.strip():
@@ -86,15 +88,16 @@ async def chat_endpoint(data:ChatRequest):
                     if chunk.text:
                         full_reply += chunk.text
                         yield json.dumps({"text":chunk.text},ensure_ascii=False) + "\n"
-                talk.append({"role":"model","parts":[{"text":full_reply}]})
-                yield json.dumps({"final_history":talk}, ensure_ascii=False) + "\n"
+ #
+                full_history.append({"role":"model","parts":[{"text":full_reply}]})
+                yield json.dumps({"final_history":full_history}, ensure_ascii=False) + "\n"
             except Exception as e:
                 logger.error(f"Stream Error:{e}")
                 yield json.dumps({"error":"Stream interrupted"}) + "\n"
-
+ 
                 full_history.append({"role":"model","parts":[{"text":full_reply}]})
                 yield json.dumps({"final_history":full_history}, ensure_ascii=False) + "\n"
-
+ 
         return StreamingResponse(event_generator(),media_type="application/x-ndjson") 
     except APIError as e:
         logger.error(f"Gemini API Error: {e}")
