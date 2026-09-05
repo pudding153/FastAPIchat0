@@ -3,8 +3,10 @@ import copy
 import os
 import logging
 import json
+import re
 from datetime import datetime
 from pathlib import Path
+from collections import defaultdict
 from fastapi import FastAPI, HTTPException, status, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,19 +29,15 @@ app = FastAPI()
 DATA_FILE = Path("token_data.json")
 
 def get_current_month() -> str:
-
     return datetime.now().strftime("%Y-%m")
 
 def load_data() -> dict:
-
     if DATA_FILE.exists():
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
             logger.error(f"データ読み込み失敗: {e}")
-
-    # 初期データ
     return {
         "current_month": get_current_month(),
         "current": {
@@ -47,11 +45,10 @@ def load_data() -> dict:
             "total_output": 0,
             "request_count": 0
         },
-        "history": {}  # {"2026-08": {...}, "2026-07": {...}}
+        "history": {}
     }
 
 def save_data(data: dict):
-
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -59,16 +56,12 @@ def save_data(data: dict):
         logger.error(f"データ保存失敗: {e}")
 
 def ensure_current_month(data: dict) -> dict:
-
     current = get_current_month()
     if data.get("current_month") != current:
-      
         prev_month = data.get("current_month")
         if prev_month and data.get("current"):
             data["history"][prev_month] = data["current"].copy()
             logger.info(f"月次リセット: {prev_month} を履歴に保存しました")
-
-        
         data["current_month"] = current
         data["current"] = {
             "total_input": 0,
@@ -78,10 +71,8 @@ def ensure_current_month(data: dict) -> dict:
         save_data(data)
     return data
 
-
 token_data = load_data()
 token_data = ensure_current_month(token_data)
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -91,12 +82,14 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=400, description="ユーザーからの入力メッセージ")
     history: list = []
     custom_prompt: Optional[str] = Field(default="", max_length=60)
 
+class RestoreRequest(BaseModel):
+    logs: str
+    reset_current: bool = False
 
 @app.get("/api/ping")
 async def ping_endpoint():
@@ -104,17 +97,14 @@ async def ping_endpoint():
 
 @app.get("/api/token-stats")
 async def get_token_stats():
-
     global token_data
     token_data = ensure_current_month(token_data)
     return token_data["current"]
 
 @app.get("/api/token-stats/history")
 async def get_token_history():
-
     global token_data
     token_data = ensure_current_month(token_data)
-
     history_list = []
     for month, stats in token_data.get("history", {}).items():
         history_list.append({
@@ -123,24 +113,59 @@ async def get_token_history():
             "total_output": stats.get("total_output", 0),
             "request_count": stats.get("request_count", 0)
         })
-
-
     history_list.sort(key=lambda x: x["month"], reverse=True)
     return history_list
+
+@app.post("/api/token-stats/restore")
+async def restore_from_logs(req: RestoreRequest):
+    global token_data
+    pattern = re.compile(
+        r"(?P<date>\d{4}-\d{2}-\d{2}).*?\[TOKEN USAGE\] input=(?P<input>\d+),\s*output=(?P<output>\d+)",
+        re.IGNORECASE
+    )
+    monthly = defaultdict(lambda: {"total_input": 0, "total_output": 0, "request_count": 0})
+    matches = list(pattern.finditer(req.logs))
+    if not matches:
+        raise HTTPException(status_code=400, detail="TOKEN USAGE の行が見つかりませんでした")
+    for m in matches:
+        month = m.group("date")[:7]
+        inp = int(m.group("input"))
+        out = int(m.group("output"))
+        monthly[month]["total_input"] += inp
+        monthly[month]["total_output"] += out
+        monthly[month]["request_count"] += 1
+    token_data = ensure_current_month(token_data)
+    current_month = get_current_month()
+    for month, stats in monthly.items():
+        if month == current_month:
+            continue
+        token_data["history"][month] = stats
+    if current_month in monthly:
+        if req.reset_current:
+            token_data["current"] = monthly[current_month]
+        else:
+            cur = token_data["current"]
+            src = monthly[current_month]
+            cur["total_input"] += src["total_input"]
+            cur["total_output"] += src["total_output"]
+            cur["request_count"] += src["request_count"]
+    save_data(token_data)
+    return {
+        "restored_months": sorted(list(monthly.keys()), reverse=True),
+        "matched_lines": len(matches),
+        "current": token_data["current"],
+        "history_count": len(token_data.get("history", {}))
+    }
 
 @app.post("/api/chat")
 async def chat_endpoint(data: ChatRequest):
     full_reply = ""
     try:
         message = data.message
-
         full_history = copy.deepcopy(data.history)
         full_history.append({"role": "user", "parts": [{"text": message}]})
-
         talk = copy.deepcopy(data.history)
         talk.append({"role": "user", "parts": [{"text": message}]})
-
-        # 記憶管理
         MAX_HISTORY_TOKENS = 2700
 
         def count_approx_tokens(chat_history):
@@ -156,7 +181,6 @@ async def chat_endpoint(data: ChatRequest):
             talk.pop(0)
         if talk and talk[0].get("role") == "model":
             talk.pop(0)
-
 
         s = ("返答は必ず250文字以内で生成する。検索ブラウジングの使用は1回リクエストごと必ず1回以下しか使用しないこと。文脈を読んで返答長さを調整する。挨拶や短文のリクエストに対してはある程度短く返答する。矛盾や嘘が無いよう不確かな情報は「わかりません」と答える会話をAI側か終わらせようとしない。むやみに全肯定せず正しい意見伝える。")
         if data.custom_prompt and data.custom_prompt.strip():
@@ -180,20 +204,15 @@ async def chat_endpoint(data: ChatRequest):
                     if chunk.text:
                         full_reply += chunk.text
                         yield json.dumps({"text": chunk.text}, ensure_ascii=False) + "\n"
-
                     if chunk.usage_metadata:
                         usage_info = chunk.usage_metadata
-
                 if usage_info:
                     global token_data
                     token_data = ensure_current_month(token_data)
-
                     token_data["current"]["total_input"] += usage_info.prompt_token_count or 0
                     token_data["current"]["total_output"] += usage_info.candidates_token_count or 0
                     token_data["current"]["request_count"] += 1
-
                     save_data(token_data)
-
                     logger.info(
                         f"[TOKEN USAGE] input={usage_info.prompt_token_count}, "
                         f"output={usage_info.candidates_token_count}, "
@@ -201,14 +220,11 @@ async def chat_endpoint(data: ChatRequest):
                     )
                 else:
                     logger.info("[TOKEN USAGE] usage_metadata not found in stream")
-
                 full_history.append({"role": "model", "parts": [{"text": full_reply}]})
                 yield json.dumps({"final_history": full_history}, ensure_ascii=False) + "\n"
-
             except Exception as e:
                 logger.error(f"Stream Error: {e}")
                 yield json.dumps({"error": "Stream interrupted"}) + "\n"
-
                 full_history.append({"role": "model", "parts": [{"text": full_reply}]})
                 yield json.dumps({"final_history": full_history}, ensure_ascii=False) + "\n"
 
@@ -226,6 +242,5 @@ async def chat_endpoint(data: ChatRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "error", "detail": str(e)}
         )
-
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
