@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>トークン使用量</title>
+<style>
+  :root {
+    --bg: #fafafa;
+    --card-bg: #ffffff;
+    --border: #e2e2e2;
+    --text-main: #1a1a1a;
+    --text-sub: #767676;
+    --accent: #2f6f4f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 40px 20px;
+    background: var(--bg);
+    font-family: "Hiragino Sans", "Yu Gothic", "Segoe UI", sans-serif;
+    color: var(--text-main);
+  }
+  .wrap {
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0 0 4px;
+  }
+  .updated {
+    font-size: 13px;
+    color: var(--text-sub);
+    margin-bottom: 28px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 16px;
+  }
+  .card .label {
+    font-size: 13px;
+    color: var(--text-sub);
+    margin-bottom: 8px;
+  }
+  .card .value {
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .card.accent .value { color: var(--accent); }
+  .detail {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    font-size: 14px;
+  }
+  .detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-row .k { color: var(--text-sub); }
+  .detail-row .v { font-weight: 600; }
+  .error {
+    color: #b3261e;
+    font-size: 14px;
+    margin-top: 16px;
+  }
+  button {
+    margin-top: 20px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-main);
+  }
+  button:hover { background: #f0f0f0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>トークン使用量</h1>
+  <div class="updated" id="updated">読み込み中...</div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="label">入力トークン</div>
+      <div class="value" id="input-val">–</div>
+    </div>
+    <div class="card">
+      <div class="label">出力トークン</div>
+      <div class="value" id="output-val">–</div>
+    </div>
+    <div class="card accent">
+      <div class="label">リクエスト数</div>
+      <div class="value" id="request-val">–</div>
+    </div>
+  </div>
+
+  <div class="detail">
+    <div class="detail-row">
+      <span class="k">合計トークン(入力+出力)</span>
+      <span class="v" id="total-val">–</span>
+    </div>
+    <div class="detail-row">
+      <span class="k">1リクエストあたり平均 入力</span>
+      <span class="v" id="avg-input-val">–</span>
+    </div>
+    <div class="detail-row">
+      <span class="k">1リクエストあたり平均 出力</span>
+      <span class="v" id="avg-output-val">–</span>
+    </div>
+  </div>
+
+  <div class="error" id="error" style="display:none;"></div>
+  <button onclick="loadStats()">更新</button>
+</div>
+
+<script>
+  // 同じオリジンから配信する前提のため、相対パスでOK
+  const STATS_URL = "/api/token-stats";
+
+  function fmt(n) {
+    return Number(n).toLocaleString("ja-JP");
+  }
+
+  async function loadStats() {
+    const errorEl = document.getElementById("error");
+    errorEl.style.display = "none";
+    try {
+      const res = await fetch(STATS_URL);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+
+      const input = data.total_input || 0;
+      const output = data.total_output || 0;
+      const count = data.request_count || 0;
+
+      document.getElementById("input-val").textContent = fmt(input);
+      document.getElementById("output-val").textContent = fmt(output);
+      document.getElementById("request-val").textContent = fmt(count);
+      document.getElementById("total-val").textContent = fmt(input + output);
+      document.getElementById("avg-input-val").textContent = count > 0 ? fmt(Math.round(input / count)) : "–";
+      document.getElementById("avg-output-val").textContent = count > 0 ? fmt(Math.round(output / count)) : "–";
+      document.getElementById("updated").textContent = "最終更新: " + new Date().toLocaleString("ja-JP");
+    } catch (e) {
+      errorEl.style.display = "block";
+      errorEl.textContent = "データの取得に失敗しました: " + e.message;
+    }
+  }
+
+  loadStats();
+</script>
+</body>
+</html>
