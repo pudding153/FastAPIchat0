@@ -24,9 +24,6 @@ key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=key)
 app = FastAPI()
 
-# ======================
-# トークン統計の永続化
-# ======================
 DATA_FILE = Path("token_data.json")
 
 def get_current_month() -> str:
@@ -67,13 +64,13 @@ def ensure_current_month(data: dict) -> dict:
     """
     current = get_current_month()
     if data.get("current_month") != current:
-        # 前月データを履歴へ
+      
         prev_month = data.get("current_month")
         if prev_month and data.get("current"):
             data["history"][prev_month] = data["current"].copy()
             logger.info(f"月次リセット: {prev_month} を履歴に保存しました")
 
-        # 当月をリセット
+        
         data["current_month"] = current
         data["current"] = {
             "total_input": 0,
@@ -83,13 +80,11 @@ def ensure_current_month(data: dict) -> dict:
         save_data(data)
     return data
 
-# 起動時にロード
+
 token_data = load_data()
 token_data = ensure_current_month(token_data)
 
-# ======================
-# CORS
-# ======================
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://fastapichat-mmm3.onrender.com"],
@@ -98,17 +93,13 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-# ======================
-# モデル
-# ======================
+
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=400, description="ユーザーからの入力メッセージ")
     history: list = []
     custom_prompt: Optional[str] = Field(default="", max_length=30)
 
-# ======================
-# エンドポイント
-# ======================
+
 @app.get("/api/ping")
 async def ping_endpoint():
     return {"status": "ok"}
@@ -142,7 +133,7 @@ async def get_token_history():
             "request_count": stats.get("request_count", 0)
         })
 
-    # 新しい月が上に来るようにソート
+
     history_list.sort(key=lambda x: x["month"], reverse=True)
     return history_list
 
@@ -175,7 +166,7 @@ async def chat_endpoint(data: ChatRequest):
         if talk and talk[0].get("role") == "model":
             talk.pop(0)
 
-        # システムプロンプト
+
         s = ("返答は必ず250文字以内で生成する。検索ブラウジングの使用は1回リクエストごと必ず1回以下しか使用しないこと。文脈を読んで返答長さを調整する。挨拶や短文のリクエストに対してはある程度短く返答する。矛盾や嘘が無いよう不確かな情報は「わかりません」と答える会話をAI側か終わらせようとしない。むやみに全肯定せず正しい意見伝える。")
         if data.custom_prompt and data.custom_prompt.strip():
             s += f"\n\n追加のプロンプト\n{data.custom_prompt.strip()}"
@@ -202,7 +193,6 @@ async def chat_endpoint(data: ChatRequest):
                     if chunk.usage_metadata:
                         usage_info = chunk.usage_metadata
 
-                # ===== トークン集計 =====
                 if usage_info:
                     global token_data
                     token_data = ensure_current_month(token_data)
@@ -246,5 +236,5 @@ async def chat_endpoint(data: ChatRequest):
             detail={"error": "error", "detail": str(e)}
         )
 
-# 静的ファイル
+
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
