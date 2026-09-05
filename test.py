@@ -43,6 +43,10 @@ async def chat_endpoint(data:ChatRequest):
     full_reply = ""
     try:
         message = data.message
+
+        full_history = copy.deepcopy(data.history)
+        full_history.append({"role":"user","parts":[{"text":message}]})
+
         talk = copy.deepcopy(data.history)
         #記憶管理
         talk.append({"role":"user","parts":[{"text":message}]})
@@ -87,6 +91,10 @@ async def chat_endpoint(data:ChatRequest):
             except Exception as e:
                 logger.error(f"Stream Error:{e}")
                 yield json.dumps({"error":"Stream interrupted"}) + "\n"
+
+                full_history.append({"role":"model","parts":[{"text":full_reply}]})
+                yield json.dumps({"final_history":full_history}, ensure_ascii=False) + "\n"
+
         return StreamingResponse(event_generator(),media_type="application/x-ndjson") 
     except APIError as e:
         logger.error(f"Gemini API Error: {e}")
