@@ -95,7 +95,7 @@ async def chat_endpoint(data:ChatRequest):
                 #
                 if usage_info:
                     logger.info(
-                        f"[TO] input={usage_info.prompt_token_count}, "
+                        f"[消費] input={usage_info.prompt_token_count}, "
                         f"output={usage_info.candidates_token_count}, "
                         f"total={usage_info.total_token_count}"
                     )
