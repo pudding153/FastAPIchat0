@@ -163,6 +163,53 @@
     padding: 24px;
     font-size: 14px;
   }
+  .restore-section {
+    margin-top: 36px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .restore-section h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 12px;
+  }
+  .restore-section textarea {
+    width: 100%;
+    min-height: 140px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    resize: vertical;
+    color: var(--text-main);
+    background: #fafafa;
+  }
+  .restore-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .restore-actions label {
+    font-size: 13px;
+    color: var(--text-sub);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+  .restore-msg {
+    font-size: 13px;
+    margin-top: 10px;
+    color: var(--accent);
+  }
+  .restore-msg.err {
+    color: #b3261e;
+  }
 </style>
 </head>
 <body>
@@ -220,7 +267,6 @@
   <div class="error" id="error" style="display:none;"></div>
   <button onclick="loadStats()">更新</button>
 
-  <!-- 履歴一覧 -->
   <div class="history-section">
     <h2>月別履歴</h2>
     <table class="history-table" id="history-table">
@@ -238,12 +284,25 @@
       </tbody>
     </table>
   </div>
+
+  <div class="restore-section">
+    <h2>ログから復元</h2>
+    <textarea id="restore-logs" placeholder="RenderのLogsから [TOKEN USAGE] の行をコピーして貼り付け"></textarea>
+    <div class="restore-actions">
+      <label>
+        <input type="checkbox" id="reset-current">
+        当月データをログの内容で上書きする
+      </label>
+      <button onclick="restoreFromLogs()">復元する</button>
+    </div>
+    <div class="restore-msg" id="restore-msg"></div>
+  </div>
 </div>
 
 <script>
   const STATS_URL = "/api/token-stats";
   const HISTORY_URL = "/api/token-stats/history";
-
+  const RESTORE_URL = "/api/token-stats/restore";
 
   const INPUT_PRICE_PER_M = 0.25;
   const OUTPUT_PRICE_PER_M = 1.50;
@@ -264,11 +323,6 @@
   function calcCost(input, output) {
     const costUsd = (input / 1_000_000) * INPUT_PRICE_PER_M + (output / 1_000_000) * OUTPUT_PRICE_PER_M;
     return costUsd * USD_TO_JPY;
-  }
-
-  function getCurrentMonthKey() {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   }
 
   function formatMonthLabel(key) {
@@ -295,7 +349,6 @@
     const tbody = document.getElementById("history-body");
     const select = document.getElementById("month-select");
 
-  
     select.innerHTML = `<option value="current">当月</option>`;
     historyData.forEach(item => {
       const opt = document.createElement("option");
@@ -328,26 +381,22 @@
     errorEl.style.display = "none";
 
     try {
-
       const res = await fetch(STATS_URL);
       if (!res.ok) throw new Error("HTTP " + res.status);
       currentData = await res.json();
 
- 
       try {
         const hRes = await fetch(HISTORY_URL);
         if (hRes.ok) {
           historyData = await hRes.json();
-       
           historyData.sort((a, b) => b.month.localeCompare(a.month));
         }
       } catch (_) {
-    
         historyData = [];
       }
 
       renderHistory();
-      onMonthChange(); 
+      onMonthChange();
 
       document.getElementById("updated").textContent =
         "最終更新: " + new Date().toLocaleString("ja-JP");
@@ -372,10 +421,40 @@
     }
   }
 
-  
+  async function restoreFromLogs() {
+    const msgEl = document.getElementById("restore-msg");
+    const logs = document.getElementById("restore-logs").value.trim();
+    const resetCurrent = document.getElementById("reset-current").checked;
+
+    msgEl.className = "restore-msg";
+    msgEl.textContent = "";
+
+    if (!logs) {
+      msgEl.className = "restore-msg err";
+      msgEl.textContent = "ログを貼り付けてください";
+      return;
+    }
+
+    try {
+      const res = await fetch(RESTORE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ logs, reset_current: resetCurrent })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || ("HTTP " + res.status));
+      }
+      msgEl.textContent = `復元完了: ${data.matched_lines}行 / 月 ${data.restored_months.join(", ")}`;
+      await loadStats();
+    } catch (e) {
+      msgEl.className = "restore-msg err";
+      msgEl.textContent = "復元に失敗しました: " + e.message;
+    }
+  }
+
   loadStats();
   setInterval(() => {
-  
     if (document.getElementById("month-select").value === "current") {
       loadStats();
     }
