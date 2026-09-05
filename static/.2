@@ -1,0 +1,22 @@
+  async function restoreAuto() {
+    const msgEl = document.getElementById("restore-msg");
+    const resetCurrent = document.getElementById("reset-current").checked;
+    msgEl.className = "restore-msg";
+    msgEl.textContent = "Renderのログを取得中...";
+
+    try {
+      const res = await fetch(
+        `/api/token-stats/restore-auto?reset_current=${resetCurrent}&days=30`,
+        { method: "POST" }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
+      }
+      msgEl.textContent = `自動復元完了: ${data.matched_lines}行 / 月 ${data.restored_months.join(", ")}`;
+      await loadStats();
+    } catch (e) {
+      msgEl.className = "restore-msg err";
+      msgEl.textContent = "自動復元に失敗しました: " + e.message;
+    }
+  }
