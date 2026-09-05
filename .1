@@ -1,0 +1,132 @@
+import httpx
+from datetime import datetime, timedelta, timezone
+
+RENDER_API_KEY = os.getenv("RENDER_API_KEY", "")
+RENDER_OWNER_ID = os.getenv("RENDER_OWNER_ID", "")
+RENDER_SERVICE_ID = os.getenv("RENDER_SERVICE_ID", "")
+
+TOKEN_LOG_PATTERN = re.compile(
+    r"\[TOKEN USAGE\] input=(?P<input>\d+),\s*output=(?P<output>\d+)",
+    re.IGNORECASE
+)
+DATE_PATTERN = re.compile(r"(?P<date>\d{4}-\d{2}-\d{2})")
+
+def apply_token_matches_to_data(matches_with_month, reset_current: bool):
+    global token_data
+    monthly = defaultdict(lambda: {"total_input": 0, "total_output": 0, "request_count": 0})
+    for month, inp, out in matches_with_month:
+        monthly[month]["total_input"] += inp
+        monthly[month]["total_output"] += out
+        monthly[month]["request_count"] += 1
+
+    token_data = ensure_current_month(token_data)
+    current_month = get_current_month()
+
+    for month, stats in monthly.items():
+        if month == current_month:
+            continue
+        token_data["history"][month] = stats
+
+    if current_month in monthly:
+        if reset_current:
+            token_data["current"] = monthly[current_month]
+        else:
+            cur = token_data["current"]
+            src = monthly[current_month]
+            cur["total_input"] += src["total_input"]
+            cur["total_output"] += src["total_output"]
+            cur["request_count"] += src["request_count"]
+
+    save_data(token_data)
+    return monthly
+
+async def fetch_render_token_logs(days: int = 30):
+    if not RENDER_API_KEY or not RENDER_OWNER_ID or not RENDER_SERVICE_ID:
+        raise HTTPException(
+            status_code=400,
+            detail="RENDER_API_KEY / RENDER_OWNER_ID / RENDER_SERVICE_ID を環境変数に設定してください"
+        )
+
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=days)
+    headers = {
+        "Authorization": f"Bearer {RENDER_API_KEY}",
+        "Accept": "application/json",
+    }
+    all_lines = []
+    start_time = start.isoformat().replace("+00:00", "Z")
+    end_time = end.isoformat().replace("+00:00", "Z")
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for _ in range(50):
+            params = [
+                ("ownerId", RENDER_OWNER_ID),
+                ("resource", RENDER_SERVICE_ID),
+                ("text", "TOKEN USAGE"),
+                ("type", "app"),
+                ("direction", "backward"),
+                ("limit", "100"),
+                ("startTime", start_time),
+                ("endTime", end_time),
+            ]
+            res = await client.get("https://api.render.com/v1/logs", headers=headers, params=params)
+            if res.status_code != 200:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Render Logs API エラー: {res.status_code} {res.text[:300]}"
+                )
+            body = res.json()
+            logs = body.get("logs") or body.get("data") or []
+            if not logs:
+                break
+
+            for item in logs:
+                msg = ""
+                ts = ""
+                if isinstance(item, dict):
+                    msg = item.get("message") or item.get("text") or item.get("log") or str(item)
+                    ts = item.get("timestamp") or item.get("time") or item.get("id") or ""
+                else:
+                    msg = str(item)
+                all_lines.append(f"{ts} {msg}")
+
+            if not body.get("hasMore"):
+                break
+
+            next_end = body.get("nextEndTime") or body.get("endTime")
+            if not next_end:
+                oldest = None
+                for item in logs:
+                    if isinstance(item, dict):
+                        t = item.get("timestamp") or item.get("time")
+                        if t and (oldest is None or t < oldest):
+                            oldest = t
+                next_end = oldest
+            if not next_end or next_end == end_time:
+                break
+            end_time = next_end
+
+    return all_lines
+
+@app.post("/api/token-stats/restore-auto")
+async def restore_from_render_logs(reset_current: bool = True, days: int = 30):
+    lines = await fetch_render_token_logs(days=days)
+    matches_with_month = []
+    for line in lines:
+        m = TOKEN_LOG_PATTERN.search(line)
+        if not m:
+            continue
+        dm = DATE_PATTERN.search(line)
+        month = dm.group("date")[:7] if dm else get_current_month()
+        matches_with_month.append((month, int(m.group("input")), int(m.group("output"))))
+
+    if not matches_with_month:
+        raise HTTPException(status_code=404, detail="TOKEN USAGE ログが見つかりませんでした")
+
+    monthly = apply_token_matches_to_data(matches_with_month, reset_current=reset_current)
+    return {
+        "matched_lines": len(matches_with_month),
+        "restored_months": sorted(monthly.keys(), reverse=True),
+        "current": token_data["current"],
+        "history_count": len(token_data.get("history", {})),
+    }
