@@ -48,9 +48,9 @@ async def chat_endpoint(data:ChatRequest):
         full_history.append({"role":"user","parts":[{"text":message}]})
 
         talk = copy.deepcopy(data.history)
-        #記憶管理
         talk.append({"role":"user","parts":[{"text":message}]})
-        MAX_HISTORY_TOKENS = 2000
+        #記憶管理
+        MAX_HISTORY_TOKENS = 1500
         def count_approx_tokens(chat_history):
             total = 0
             for msg in chat_history:
@@ -77,6 +77,7 @@ async def chat_endpoint(data:ChatRequest):
 )
         async def event_generator():
             full_reply = ""
+            usage_info = None  #
             try:
                 async for chunk in await client.aio.models.generate_content_stream(
                     contents=talk,
@@ -86,8 +87,23 @@ async def chat_endpoint(data:ChatRequest):
                     if chunk.text:
                         full_reply += chunk.text
                         yield json.dumps({"text":chunk.text},ensure_ascii=False) + "\n"
-                talk.append({"role":"model","parts":[{"text":full_reply}]})
-                yield json.dumps({"final_history":talk}, ensure_ascii=False) + "\n"
+
+                    #
+                    if chunk.usage_metadata:
+                        usage_info = chunk.usage_metadata
+
+                #
+                if usage_info:
+                    logger.info(
+                        f"[TOKEN USAGE] input={usage_info.prompt_token_count}, "
+                        f"output={usage_info.candidates_token_count}, "
+                        f"total={usage_info.total_token_count}"
+                    )
+                else:
+                    logger.info("[TOKEN USAGE] usage_metadata not found in stream")
+
+                full_history.append({"role":"model","parts":[{"text":full_reply}]})
+                yield json.dumps({"final_history":full_history}, ensure_ascii=False) + "\n"
             except Exception as e:
                 logger.error(f"Stream Error:{e}")
                 yield json.dumps({"error":"Stream interrupted"}) + "\n"
