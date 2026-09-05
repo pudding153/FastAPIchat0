@@ -22,6 +22,9 @@ load_dotenv()
 key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=key)
 app = FastAPI()
+
+token_stats = {"total_input": 0, "total_output": 0, "request_count": 0}
+
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=400, description="ユーザーからの入力メッセージ")
     history: list = []
@@ -38,6 +41,11 @@ app.add_middleware(
 @app.get("/api/ping")
 async def ping_endpoint():
     return {"status": "ok"}
+
+@app.get("/api/token-stats")
+async def get_token_stats():
+    return token_stats
+
 @app.post("/api/chat")
 async def chat_endpoint(data:ChatRequest):
     full_reply = ""
@@ -77,7 +85,7 @@ async def chat_endpoint(data:ChatRequest):
 )
         async def event_generator():
             full_reply = ""
-            usage_info = None  #
+            usage_info = None  
             try:
                 async for chunk in await client.aio.models.generate_content_stream(
                     contents=talk,
@@ -88,14 +96,16 @@ async def chat_endpoint(data:ChatRequest):
                         full_reply += chunk.text
                         yield json.dumps({"text":chunk.text},ensure_ascii=False) + "\n"
 
-                    #
                     if chunk.usage_metadata:
                         usage_info = chunk.usage_metadata
 
-                #
                 if usage_info:
+                    token_stats["total_input"] += usage_info.prompt_token_count
+                    token_stats["total_output"] += usage_info.candidates_token_count
+                    token_stats["request_count"] += 1
+
                     logger.info(
-                        f"[消費] input={usage_info.prompt_token_count}, "
+                        f"[TOKEN USAGE] input={usage_info.prompt_token_count}, "
                         f"output={usage_info.candidates_token_count}, "
                         f"total={usage_info.total_token_count}"
                     )
