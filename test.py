@@ -27,11 +27,11 @@ app = FastAPI()
 DATA_FILE = Path("token_data.json")
 
 def get_current_month() -> str:
-    """YYYY-MM 形式で現在の月を返す"""
+
     return datetime.now().strftime("%Y-%m")
 
 def load_data() -> dict:
-    """ファイルからデータを読み込む。存在しない場合は初期化"""
+
     if DATA_FILE.exists():
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -51,7 +51,7 @@ def load_data() -> dict:
     }
 
 def save_data(data: dict):
-    """データをファイルに保存"""
+
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -59,9 +59,7 @@ def save_data(data: dict):
         logger.error(f"データ保存失敗: {e}")
 
 def ensure_current_month(data: dict) -> dict:
-    """
-    月が変わっていたら前月を履歴に移し、当月をリセットする
-    """
+
     current = get_current_month()
     if data.get("current_month") != current:
       
@@ -97,7 +95,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=400, description="ユーザーからの入力メッセージ")
     history: list = []
-    custom_prompt: Optional[str] = Field(default="", max_length=30)
+    custom_prompt: Optional[str] = Field(default="", max_length=60)
 
 
 @app.get("/api/ping")
