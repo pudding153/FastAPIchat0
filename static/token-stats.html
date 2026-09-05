@@ -22,7 +22,7 @@
     color: var(--text-main);
   }
   .wrap {
-    max-width: 640px;
+    max-width: 720px;
     margin: 0 auto;
   }
   h1 {
@@ -33,7 +33,30 @@
   .updated {
     font-size: 13px;
     color: var(--text-sub);
-    margin-bottom: 28px;
+    margin-bottom: 20px;
+  }
+  .period-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .period-bar select {
+    padding: 7px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    font-size: 14px;
+    color: var(--text-main);
+  }
+  .badge {
+    font-size: 12px;
+    background: #e8f5ee;
+    color: var(--accent);
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-weight: 600;
   }
   .grid {
     display: grid;
@@ -96,12 +119,63 @@
     margin-top: 12px;
     line-height: 1.5;
   }
+  .history-section {
+    margin-top: 36px;
+  }
+  .history-section h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 12px;
+  }
+  .history-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    font-size: 13px;
+  }
+  .history-table th,
+  .history-table td {
+    padding: 10px 12px;
+    text-align: right;
+    border-bottom: 1px solid var(--border);
+  }
+  .history-table th:first-child,
+  .history-table td:first-child {
+    text-align: left;
+  }
+  .history-table th {
+    background: #f5f5f5;
+    color: var(--text-sub);
+    font-weight: 500;
+  }
+  .history-table tr:last-child td {
+    border-bottom: none;
+  }
+  .history-table tr:hover {
+    background: #fafafa;
+  }
+  .empty {
+    text-align: center;
+    color: var(--text-sub);
+    padding: 24px;
+    font-size: 14px;
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>トークン使用量</h1>
   <div class="updated" id="updated">読み込み中...</div>
+
+  <div class="period-bar">
+    <select id="month-select" onchange="onMonthChange()">
+      <option value="current">当月</option>
+    </select>
+    <span class="badge" id="period-badge">当月</span>
+  </div>
 
   <div class="grid">
     <div class="card">
@@ -139,67 +213,173 @@
 
   <div class="note">
     料金：入力 $0.25 / 100万トークン、出力 $1.50 / 100万トークン<br>
-    為替：1 USD ≒ 156.3 円 で換算（参考値）
+    為替：1 USD ≒ 156.3 円 で換算（参考値）<br>
+    ※ 表示は毎月1日に自動リセットされます。過去月の履歴は下部に保存されます。
   </div>
 
   <div class="error" id="error" style="display:none;"></div>
   <button onclick="loadStats()">更新</button>
+
+  <!-- 履歴一覧 -->
+  <div class="history-section">
+    <h2>月別履歴</h2>
+    <table class="history-table" id="history-table">
+      <thead>
+        <tr>
+          <th>月</th>
+          <th>リクエスト</th>
+          <th>入力</th>
+          <th>出力</th>
+          <th>合計金額</th>
+        </tr>
+      </thead>
+      <tbody id="history-body">
+        <tr><td colspan="5" class="empty">読み込み中...</td></tr>
+      </tbody>
+    </table>
+  </div>
 </div>
 
 <script>
-  // 同じオリジンから配信する前提のため、相対パスでOK
   const STATS_URL = "/api/token-stats";
+  const HISTORY_URL = "/api/token-stats/history";
 
-  // 料金設定
-  const INPUT_PRICE_PER_M = 0.25;   // $ / 1M tokens
-  const OUTPUT_PRICE_PER_M = 1.50;  // $ / 1M tokens
-  const USD_TO_JPY = 156.3;         // 参考為替レート
+
+  const INPUT_PRICE_PER_M = 0.25;
+  const OUTPUT_PRICE_PER_M = 1.50;
+  const USD_TO_JPY = 156.3;
+
+  let currentData = null;
+  let historyData = [];
 
   function fmt(n) {
     return Number(n).toLocaleString("ja-JP");
   }
 
   function fmtYen(n) {
-    // 円は小数点以下を適切に処理（1円未満は小数第1位まで）
-    if (n < 1) {
-      return "¥" + n.toFixed(1);
-    }
+    if (n < 1) return "¥" + n.toFixed(1);
     return "¥" + Math.round(n).toLocaleString("ja-JP");
+  }
+
+  function calcCost(input, output) {
+    const costUsd = (input / 1_000_000) * INPUT_PRICE_PER_M + (output / 1_000_000) * OUTPUT_PRICE_PER_M;
+    return costUsd * USD_TO_JPY;
+  }
+
+  function getCurrentMonthKey() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function formatMonthLabel(key) {
+    if (key === "current") return "当月";
+    const [y, m] = key.split("-");
+    return `${y}年${parseInt(m)}月`;
+  }
+
+  function renderStats(data) {
+    const input = data.total_input || 0;
+    const output = data.total_output || 0;
+    const count = data.request_count || 0;
+
+    document.getElementById("input-val").textContent = fmt(input);
+    document.getElementById("output-val").textContent = fmt(output);
+    document.getElementById("request-val").textContent = fmt(count);
+    document.getElementById("total-val").textContent = fmt(input + output);
+    document.getElementById("avg-input-val").textContent = count > 0 ? fmt(Math.round(input / count)) : "–";
+    document.getElementById("avg-output-val").textContent = count > 0 ? fmt(Math.round(output / count)) : "–";
+    document.getElementById("cost-val").textContent = fmtYen(calcCost(input, output));
+  }
+
+  function renderHistory() {
+    const tbody = document.getElementById("history-body");
+    const select = document.getElementById("month-select");
+
+  
+    select.innerHTML = `<option value="current">当月</option>`;
+    historyData.forEach(item => {
+      const opt = document.createElement("option");
+      opt.value = item.month;
+      opt.textContent = formatMonthLabel(item.month);
+      select.appendChild(opt);
+    });
+
+    if (historyData.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="5" class="empty">履歴がまだありません</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = historyData.map(item => {
+      const cost = calcCost(item.total_input || 0, item.total_output || 0);
+      return `
+        <tr>
+          <td>${formatMonthLabel(item.month)}</td>
+          <td>${fmt(item.request_count || 0)}</td>
+          <td>${fmt(item.total_input || 0)}</td>
+          <td>${fmt(item.total_output || 0)}</td>
+          <td>${fmtYen(cost)}</td>
+        </tr>
+      `;
+    }).join("");
   }
 
   async function loadStats() {
     const errorEl = document.getElementById("error");
     errorEl.style.display = "none";
+
     try {
+
       const res = await fetch(STATS_URL);
       if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
+      currentData = await res.json();
 
-      const input = data.total_input || 0;
-      const output = data.total_output || 0;
-      const count = data.request_count || 0;
+ 
+      try {
+        const hRes = await fetch(HISTORY_URL);
+        if (hRes.ok) {
+          historyData = await hRes.json();
+       
+          historyData.sort((a, b) => b.month.localeCompare(a.month));
+        }
+      } catch (_) {
+    
+        historyData = [];
+      }
 
-      document.getElementById("input-val").textContent = fmt(input);
-      document.getElementById("output-val").textContent = fmt(output);
-      document.getElementById("request-val").textContent = fmt(count);
-      document.getElementById("total-val").textContent = fmt(input + output);
-      document.getElementById("avg-input-val").textContent = count > 0 ? fmt(Math.round(input / count)) : "–";
-      document.getElementById("avg-output-val").textContent = count > 0 ? fmt(Math.round(output / count)) : "–";
+      renderHistory();
+      onMonthChange(); 
 
-      // 合計金額計算
-      const costUsd = (input / 1_000_000) * INPUT_PRICE_PER_M + (output / 1_000_000) * OUTPUT_PRICE_PER_M;
-      const costJpy = costUsd * USD_TO_JPY;
-      document.getElementById("cost-val").textContent = fmtYen(costJpy);
-
-      document.getElementById("updated").textContent = "最終更新: " + new Date().toLocaleString("ja-JP");
+      document.getElementById("updated").textContent =
+        "最終更新: " + new Date().toLocaleString("ja-JP");
     } catch (e) {
       errorEl.style.display = "block";
       errorEl.textContent = "データの取得に失敗しました: " + e.message;
     }
   }
 
+  function onMonthChange() {
+    const select = document.getElementById("month-select");
+    const value = select.value;
+    const badge = document.getElementById("period-badge");
+
+    if (value === "current") {
+      badge.textContent = "当月";
+      if (currentData) renderStats(currentData);
+    } else {
+      badge.textContent = formatMonthLabel(value);
+      const item = historyData.find(d => d.month === value);
+      if (item) renderStats(item);
+    }
+  }
+
+  
   loadStats();
-  setInterval(loadStats, 10000); 
+  setInterval(() => {
+  
+    if (document.getElementById("month-select").value === "current") {
+      loadStats();
+    }
+  }, 10000);
 </script>
 </body>
 </html>
