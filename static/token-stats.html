@@ -90,6 +90,12 @@
     color: var(--text-main);
   }
   button:hover { background: #f0f0f0; }
+  .note {
+    font-size: 12px;
+    color: var(--text-sub);
+    margin-top: 12px;
+    line-height: 1.5;
+  }
 </style>
 </head>
 <body>
@@ -125,6 +131,15 @@
       <span class="k">1リクエストあたり平均 出力</span>
       <span class="v" id="avg-output-val">–</span>
     </div>
+    <div class="detail-row">
+      <span class="k">合計金額（円）</span>
+      <span class="v" id="cost-val">–</span>
+    </div>
+  </div>
+
+  <div class="note">
+    料金：入力 $0.25 / 100万トークン、出力 $1.50 / 100万トークン<br>
+    為替：1 USD ≒ 156.3 円 で換算（参考値）
   </div>
 
   <div class="error" id="error" style="display:none;"></div>
@@ -135,8 +150,21 @@
   // 同じオリジンから配信する前提のため、相対パスでOK
   const STATS_URL = "/api/token-stats";
 
+  // 料金設定
+  const INPUT_PRICE_PER_M = 0.25;   // $ / 1M tokens
+  const OUTPUT_PRICE_PER_M = 1.50;  // $ / 1M tokens
+  const USD_TO_JPY = 156.3;         // 参考為替レート
+
   function fmt(n) {
     return Number(n).toLocaleString("ja-JP");
+  }
+
+  function fmtYen(n) {
+    // 円は小数点以下を適切に処理（1円未満は小数第1位まで）
+    if (n < 1) {
+      return "¥" + n.toFixed(1);
+    }
+    return "¥" + Math.round(n).toLocaleString("ja-JP");
   }
 
   async function loadStats() {
@@ -157,6 +185,12 @@
       document.getElementById("total-val").textContent = fmt(input + output);
       document.getElementById("avg-input-val").textContent = count > 0 ? fmt(Math.round(input / count)) : "–";
       document.getElementById("avg-output-val").textContent = count > 0 ? fmt(Math.round(output / count)) : "–";
+
+      // 合計金額計算
+      const costUsd = (input / 1_000_000) * INPUT_PRICE_PER_M + (output / 1_000_000) * OUTPUT_PRICE_PER_M;
+      const costJpy = costUsd * USD_TO_JPY;
+      document.getElementById("cost-val").textContent = fmtYen(costJpy);
+
       document.getElementById("updated").textContent = "最終更新: " + new Date().toLocaleString("ja-JP");
     } catch (e) {
       errorEl.style.display = "block";
