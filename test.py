@@ -106,21 +106,14 @@ async def ping_endpoint():
 
 @app.get("/api/token-stats")
 async def get_token_stats():
-    """当月の統計を返す（必要なら月次リセットも実行）"""
+
     global token_data
     token_data = ensure_current_month(token_data)
     return token_data["current"]
 
 @app.get("/api/token-stats/history")
 async def get_token_history():
-    """
-    過去月の履歴を新しい順で返す
-    フロントエンドが期待する形式:
-    [
-      {"month": "2026-08", "total_input": ..., "total_output": ..., "request_count": ...},
-      ...
-    ]
-    """
+
     global token_data
     token_data = ensure_current_month(token_data)
 
@@ -150,7 +143,7 @@ async def chat_endpoint(data: ChatRequest):
         talk.append({"role": "user", "parts": [{"text": message}]})
 
         # 記憶管理
-        MAX_HISTORY_TOKENS = 1900
+        MAX_HISTORY_TOKENS = 2700
 
         def count_approx_tokens(chat_history):
             total = 0
