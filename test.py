@@ -4,7 +4,7 @@ import os
 import logging
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from collections import defaultdict
 from fastapi import FastAPI, HTTPException, status
@@ -12,12 +12,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
-import httpx
+from typing import Optional
 
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
-from typing import Optional
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -27,11 +26,18 @@ key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=key)
 app = FastAPI()
 
-DATA_FILE = Path("token_data.json")
 
-RENDER_API_KEY = os.getenv("RENDER_API_KEY", "")
-RENDER_OWNER_ID = os.getenv("RENDER_OWNER_ID", "")
-RENDER_SERVICE_ID = os.getenv("RENDER_SERVICE_ID", "")
+DATA_DIR = Path(os.getenv("DATA_DIR", "/data"))
+try:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+except Exception as e:
+    logger.error(f"データディレクトリ作成失敗: {e}")
+
+DATA_FILE = DATA_DIR / "token_data.json"
+
+
+TOKEN_LOG_FILE = DATA_DIR / "token_usage.log"
+
 
 TOKEN_LOG_PATTERN = re.compile(
     r"\[TOKEN USAGE\] input=(?P<input>\d+),\s*output=(?P<output>\d+)",
@@ -131,82 +137,41 @@ def apply_token_matches_to_data(matches_with_month, reset_current: bool):
     save_data(token_data)
     return monthly
 
-async def fetch_render_token_logs(days: int = 30):
-    if not RENDER_API_KEY or not RENDER_OWNER_ID or not RENDER_SERVICE_ID:
-        raise HTTPException(
-            status_code=400,
-            detail="RENDER_API_KEY / RENDER_OWNER_ID / RENDER_SERVICE_ID を環境変数に設定してください",
+
+def append_token_log_line(input_tokens: int, output_tokens: int):
+    """リクエストごとのトークン使用量を /data/token_usage.log に追記する"""
+    try:
+        line = (
+            f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
+            f"[TOKEN USAGE] input={input_tokens}, output={output_tokens}\n"
         )
+        with open(TOKEN_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception as e:
+        logger.error(f"トークンログ書き込み失敗: {e}")
 
-    end = datetime.now(timezone.utc)
-    start = end - timedelta(days=days)
-    headers = {
-        "Authorization": f"Bearer {RENDER_API_KEY}",
-        "Accept": "application/json",
-    }
-    all_lines = []
-    start_time = start.isoformat().replace("+00:00", "Z")
-    end_time = end.isoformat().replace("+00:00", "Z")
+def read_local_token_logs(days: int = 365) -> list:
+    """
+    ディスクに保存された token_usage.log から
+    直近 days 日分の行を読み込んで返す（Render Logs API を叩かない）
+    """
+    if not TOKEN_LOG_FILE.exists():
+        return []
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        for _ in range(50):
-            params = [
-                ("ownerId", RENDER_OWNER_ID),
-                ("resource", RENDER_SERVICE_ID),
-                ("text", "TOKEN USAGE"),
-                ("type", "app"),
-                ("direction", "backward"),
-                ("limit", "100"),
-                ("startTime", start_time),
-                ("endTime", end_time),
-            ]
-            res = await client.get(
-                "https://api.render.com/v1/logs",
-                headers=headers,
-                params=params,
-            )
-            if res.status_code != 200:
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Render Logs API エラー: {res.status_code} {res.text[:300]}",
-                )
-            body = res.json()
-            logs = body.get("logs") or body.get("data") or []
-            if not logs:
-                break
+    cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    lines = []
+    try:
+        with open(TOKEN_LOG_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                dm = DATE_PATTERN.search(line)
+              
+                if dm and dm.group("date") < cutoff_date:
+                    continue
+                lines.append(line)
+    except Exception as e:
+        logger.error(f"トークンログ読み込み失敗: {e}")
+    return lines
 
-            for item in logs:
-                msg = ""
-                ts = ""
-                if isinstance(item, dict):
-                    msg = (
-                        item.get("message")
-                        or item.get("text")
-                        or item.get("log")
-                        or str(item)
-                    )
-                    ts = item.get("timestamp") or item.get("time") or item.get("id") or ""
-                else:
-                    msg = str(item)
-                all_lines.append(f"{ts} {msg}")
-
-            if not body.get("hasMore"):
-                break
-
-            next_end = body.get("nextEndTime") or body.get("endTime")
-            if not next_end:
-                oldest = None
-                for item in logs:
-                    if isinstance(item, dict):
-                        t = item.get("timestamp") or item.get("time")
-                        if t and (oldest is None or t < oldest):
-                            oldest = t
-                next_end = oldest
-            if not next_end or next_end == end_time:
-                break
-            end_time = next_end
-
-    return all_lines
 
 @app.get("/api/ping")
 async def ping_endpoint():
@@ -256,9 +221,10 @@ async def restore_from_logs(req: RestoreRequest):
         "history_count": len(token_data.get("history", {})),
     }
 
+
 @app.post("/api/token-stats/restore-auto")
-async def restore_from_render_logs(reset_current: bool = True, days: int = 30):
-    lines = await fetch_render_token_logs(days=days)
+async def restore_from_render_logs(reset_current: bool = True, days: int = 365):
+    lines = read_local_token_logs(days=days)
     matches_with_month = []
     for line in lines:
         m = TOKEN_LOG_PATTERN.search(line)
@@ -269,7 +235,7 @@ async def restore_from_render_logs(reset_current: bool = True, days: int = 30):
         matches_with_month.append((month, int(m.group("input")), int(m.group("output"))))
 
     if not matches_with_month:
-        raise HTTPException(status_code=404, detail="TOKEN USAGE ログが見つかりませんでした")
+        raise HTTPException(status_code=404, detail="token_usage.log に TOKEN USAGE の記録が見つかりませんでした")
 
     monthly = apply_token_matches_to_data(matches_with_month, reset_current=reset_current)
     return {
@@ -278,6 +244,7 @@ async def restore_from_render_logs(reset_current: bool = True, days: int = 30):
         "current": token_data["current"],
         "history_count": len(token_data.get("history", {})),
     }
+
 
 @app.post("/api/chat")
 async def chat_endpoint(data: ChatRequest):
@@ -338,15 +305,20 @@ async def chat_endpoint(data: ChatRequest):
                 if usage_info:
                     global token_data
                     token_data = ensure_current_month(token_data)
-                    token_data["current"]["total_input"] += usage_info.prompt_token_count or 0
-                    token_data["current"]["total_output"] += (
-                        usage_info.candidates_token_count or 0
-                    )
+                    input_tokens = usage_info.prompt_token_count or 0
+                    output_tokens = usage_info.candidates_token_count or 0
+                    token_data["current"]["total_input"] += input_tokens
+                    token_data["current"]["total_output"] += output_tokens
                     token_data["current"]["request_count"] += 1
                     save_data(token_data)
+
+            
+                    append_token_log_line(input_tokens, output_tokens)
+                   
+
                     logger.info(
-                        f"[TOKEN USAGE] input={usage_info.prompt_token_count}, "
-                        f"output={usage_info.candidates_token_count}, "
+                        f"[TOKEN USAGE] input={input_tokens}, "
+                        f"output={output_tokens}, "
                         f"total={usage_info.total_token_count}"
                     )
                 else:
