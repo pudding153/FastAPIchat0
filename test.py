@@ -164,13 +164,39 @@ def read_local_token_logs(days: int = 365) -> list:
         with open(TOKEN_LOG_FILE, "r", encoding="utf-8") as f:
             for line in f:
                 dm = DATE_PATTERN.search(line)
-              
+
                 if dm and dm.group("date") < cutoff_date:
                     continue
                 lines.append(line)
     except Exception as e:
         logger.error(f"トークンログ読み込み失敗: {e}")
     return lines
+
+def append_matched_lines_to_disk(raw_lines: list) -> int:
+    """
+    貼り付けたRenderの過去ログから抽出した [TOKEN USAGE] 行を
+    token_usage.log に書き込む（すでに同じ行があれば重複しないようスキップ）。
+    これにより、過去分もディスク上の台帳に統合され、以後 restore-auto で読める。
+    """
+    if not raw_lines:
+        return 0
+    try:
+        existing = set()
+        if TOKEN_LOG_FILE.exists():
+            with open(TOKEN_LOG_FILE, "r", encoding="utf-8") as f:
+                existing = set(f.read().splitlines())
+
+        new_lines = [line.strip() for line in raw_lines if line.strip() not in existing]
+        if not new_lines:
+            return 0
+
+        with open(TOKEN_LOG_FILE, "a", encoding="utf-8") as f:
+            for line in new_lines:
+                f.write(line + "\n")
+        return len(new_lines)
+    except Exception as e:
+        logger.error(f"過去ログのディスク書き込み失敗: {e}")
+        return 0
 
 
 @app.get("/api/ping")
@@ -203,6 +229,9 @@ async def get_token_history():
 @app.post("/api/token-stats/restore")
 async def restore_from_logs(req: RestoreRequest):
     matches_with_month = []
+
+    raw_lines = []
+
     pattern = re.compile(
         r"(?P<date>\d{4}-\d{2}-\d{2}).*?\[TOKEN USAGE\] input=(?P<input>\d+),\s*output=(?P<output>\d+)",
         re.IGNORECASE,
@@ -211,16 +240,22 @@ async def restore_from_logs(req: RestoreRequest):
         matches_with_month.append(
             (m.group("date")[:7], int(m.group("input")), int(m.group("output")))
         )
+        raw_lines.append(m.group(0))
     if not matches_with_month:
         raise HTTPException(status_code=400, detail="TOKEN USAGE の行が見つかりませんでした")
     monthly = apply_token_matches_to_data(matches_with_month, reset_current=req.reset_current)
+
+
+    written = append_matched_lines_to_disk(raw_lines)
+
+
     return {
         "restored_months": sorted(list(monthly.keys()), reverse=True),
         "matched_lines": len(matches_with_month),
+        "written_to_disk": written,
         "current": token_data["current"],
         "history_count": len(token_data.get("history", {})),
     }
-
 
 @app.post("/api/token-stats/restore-auto")
 async def restore_from_render_logs(reset_current: bool = True, days: int = 365):
@@ -255,7 +290,7 @@ async def chat_endpoint(data: ChatRequest):
         full_history.append({"role": "user", "parts": [{"text": message}]})
         talk = copy.deepcopy(data.history)
         talk.append({"role": "user", "parts": [{"text": message}]})
-        MAX_HISTORY_TOKENS = 1999
+        MAX_HISTORY_TOKENS = 2000
 
         def count_approx_tokens(chat_history):
             total = 0
@@ -312,9 +347,9 @@ async def chat_endpoint(data: ChatRequest):
                     token_data["current"]["request_count"] += 1
                     save_data(token_data)
 
-            
+
                     append_token_log_line(input_tokens, output_tokens)
-                   
+
 
                     logger.info(
                         f"[TOKEN USAGE] input={input_tokens}, "
