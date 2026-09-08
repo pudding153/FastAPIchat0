@@ -312,7 +312,7 @@ async def chat_endpoint(data: ChatRequest):
 
         ai_config = types.GenerateContentConfig(
             system_instruction=s,
-            max_output_tokens=300,
+            max_output_tokens=450,
             tools=[types.Tool(google_search=types.GoogleSearch())],
         )
 
