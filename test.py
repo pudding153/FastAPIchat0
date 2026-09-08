@@ -139,7 +139,6 @@ def apply_token_matches_to_data(matches_with_month, reset_current: bool):
 
 
 def append_token_log_line(input_tokens: int, output_tokens: int):
-    """リクエストごとのトークン使用量を /data/token_usage.log に追記する"""
     try:
         line = (
             f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
@@ -151,10 +150,6 @@ def append_token_log_line(input_tokens: int, output_tokens: int):
         logger.error(f"トークンログ書き込み失敗: {e}")
 
 def read_local_token_logs(days: int = 365) -> list:
-    """
-    ディスクに保存された token_usage.log から
-    直近 days 日分の行を読み込んで返す（Render Logs API を叩かない）
-    """
     if not TOKEN_LOG_FILE.exists():
         return []
 
@@ -174,11 +169,6 @@ def read_local_token_logs(days: int = 365) -> list:
     return lines
 
 def append_matched_lines_to_disk(raw_lines: list) -> int:
-    """
-    貼り付けたRenderの過去ログから抽出した [TOKEN USAGE] 行を
-    token_usage.log に書き込む（すでに同じ行があれば重複しないようスキップ）。
-    これにより、過去分もディスク上の台帳に統合され、以後 restore-auto で読める。
-    """
     if not raw_lines:
         return 0
     try:
@@ -312,9 +302,9 @@ async def chat_endpoint(data: ChatRequest):
             talk.pop(0)
 
         s = (
-            "返答は必ず250文字以内で生成する。検索ブラウジングの使用は1回リクエストごと必ず1回以下しか使用しないこと。"
-            "文脈を読んで返答長さを調整する。挨拶や短文のリクエストに対してはある程度短く返答する。"
-            "矛盾や嘘が無いよう不確かな情報は「わかりません」と答える会話をAI側か終わらせようとしない。"
+            "長時間の推論を行わず素早く正確に返答する、返答は必ず250文字以内で生成する。検索ブラウジングの使用は1回リクエストごとに1回以下しか使用しない。"
+            "挨拶や短文のリクエストに対しては短く返答する。"
+            "矛盾や嘘を無くし不確かな情報は「わかりません」と答える、会話をAI側か終わらせようとしない。"
             "むやみに全肯定せず正しい意見伝える。"
         )
         if data.custom_prompt and data.custom_prompt.strip():
