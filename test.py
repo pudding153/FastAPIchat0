@@ -139,7 +139,7 @@ def apply_token_matches_to_data(matches_with_month, reset_current: bool):
 
 
 def append_token_log_line(input_tokens: int, output_tokens: int):
-    "
+    """リクエストごとのトークン使用量を /data/token_usage.log に追記する"""
     try:
         line = (
             f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
@@ -150,7 +150,11 @@ def append_token_log_line(input_tokens: int, output_tokens: int):
     except Exception as e:
         logger.error(f"トークンログ書き込み失敗: {e}")
 
-def read_local_token_logs(days: int = 365) -> 
+def read_local_token_logs(days: int = 365) -> list:
+    """
+    ディスクに保存された token_usage.log から
+    直近 days 日分の行を読み込んで返す（Render Logs API を叩かない）
+    """
     if not TOKEN_LOG_FILE.exists():
         return []
 
@@ -160,6 +164,7 @@ def read_local_token_logs(days: int = 365) ->
         with open(TOKEN_LOG_FILE, "r", encoding="utf-8") as f:
             for line in f:
                 dm = DATE_PATTERN.search(line)
+              
 
                 if dm and dm.group("date") < cutoff_date:
                     continue
@@ -168,7 +173,12 @@ def read_local_token_logs(days: int = 365) ->
         logger.error(f"トークンログ読み込み失敗: {e}")
     return lines
 
-def append_matched_lines_to_disk(raw_lines: list) -> 
+def append_matched_lines_to_disk(raw_lines: list) -> int:
+    """
+    貼り付けたRenderの過去ログから抽出した [TOKEN USAGE] 行を
+    token_usage.log に書き込む（すでに同じ行があれば重複しないようスキップ）。
+    これにより、過去分もディスク上の台帳に統合され、以後 restore-auto で読める。
+    """
     if not raw_lines:
         return 0
     try:
@@ -248,6 +258,7 @@ async def restore_from_logs(req: RestoreRequest):
         "history_count": len(token_data.get("history", {})),
     }
 
+
 @app.post("/api/token-stats/restore-auto")
 async def restore_from_render_logs(reset_current: bool = True, days: int = 365):
     lines = read_local_token_logs(days=days)
@@ -281,6 +292,7 @@ async def chat_endpoint(data: ChatRequest):
         full_history.append({"role": "user", "parts": [{"text": message}]})
         talk = copy.deepcopy(data.history)
         talk.append({"role": "user", "parts": [{"text": message}]})
+        MAX_HISTORY_TOKENS = 1999
         MAX_HISTORY_TOKENS = 2000
 
         def count_approx_tokens(chat_history):
@@ -300,9 +312,9 @@ async def chat_endpoint(data: ChatRequest):
             talk.pop(0)
 
         s = (
-            "長時間の推論は行わず素早く正確返答する、返答は必ず250文字以内で生成する。検索の使用は1回リクエストごと必ず1回以下しか使用しない"
-            "挨拶や短文に対しては短く返答する。"
-            "矛盾や嘘を無くし、不確かな情報は「わかりません」と答える、会話をAI側から終わらせない。"
+            "返答は必ず250文字以内で生成する。検索ブラウジングの使用は1回リクエストごと必ず1回以下しか使用しないこと。"
+            "文脈を読んで返答長さを調整する。挨拶や短文のリクエストに対してはある程度短く返答する。"
+            "矛盾や嘘が無いよう不確かな情報は「わかりません」と答える会話をAI側か終わらせようとしない。"
             "むやみに全肯定せず正しい意見伝える。"
         )
         if data.custom_prompt and data.custom_prompt.strip():
@@ -338,8 +350,10 @@ async def chat_endpoint(data: ChatRequest):
                     token_data["current"]["request_count"] += 1
                     save_data(token_data)
 
+            
 
                     append_token_log_line(input_tokens, output_tokens)
+                   
 
 
                     logger.info(
