@@ -309,11 +309,10 @@ async def chat_endpoint(data: ChatRequest):
         )
         if data.custom_prompt and data.custom_prompt.strip():
             s += f"\n\n追加のプロンプト\n{data.custom_prompt.strip()}"
-
         ai_config = types.GenerateContentConfig(
             system_instruction=s,
             max_output_tokens=300,
-            thinking_config=types.ThinkingConfig(thinking_level="MEDIUM"),
+            thinking_config=types.ThinkingConfig(thinking_level="Low"),
             tools=[types.Tool(google_search=types.GoogleSearch())],
         )
 
