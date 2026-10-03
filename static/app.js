@@ -1,6 +1,7 @@
 let history = JSON.parse(localStorage.getItem('chat_history')) || [];
-let currentPrompt = ""; 
-// 1
+let currentPrompt = "";
+
+// プロンプト設定
 window.addEventListener('DOMContentLoaded', () => {
     const setPromptBtn = document.getElementById('setprompt');
     const promptInput = document.getElementById('prompt');
@@ -15,84 +16,81 @@ window.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
-//  
 
-function parseMarkdown(text){
-    if(!text)return ``;
-       let safeText = text
+function parseMarkdown(text) {
+    if (!text) return ``;
+    let safeText = text
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
-        .replace(/'/g, "'");
+        .replace(/'/g, "&#39;");
 
-        safeText = safeText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-        safeText = safeText.replace(/__(.*?)__/g, '<strong>$1</strong>');
+    safeText = safeText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    safeText = safeText.replace(/__(.*?)__/g, '<strong>$1</strong>');
 
-        safeText = safeText.replace(/\*(.*?)\*/g, '<em>$1</em>');
-        safeText = safeText.replace(/_(.*?)_/g, '<em>$1</em>');
-        safeText = safeText.replace(/\n/g, '<br>');
-        return safeText;
+    safeText = safeText.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    safeText = safeText.replace(/_(.*?)_/g, '<em>$1</em>');
+    safeText = safeText.replace(/\n/g, '<br>');
+    return safeText;
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-    history.forEach(talk => {
-        const role = talk.role === 'user' ? '自分' : 'AI';
-        const text = talk.parts[0].text; 
-        const p = document.createElement('p');
+function addBubble(role, text) {
+    const isUser = role === 'user';
+    const p = document.createElement('p');
+    p.className = isUser ? 'chat-bubble user-bubble' : 'chat-bubble ai-bubble';
+    p.innerHTML = `${isUser ? '自分' : 'AI'}: ${parseMarkdown(text)}`;
+    log.appendChild(p);
+    return p;
+}
 
-        const bubbleClass = talk.role === 'user' ? 'user-bubble' : 'ai-bubble';
-        
-        p.className = 'chat-bubble';
-        p.innerHTML = `${role}: ${parseMarkdown(text)}`;
-        log.appendChild(p);
+function renderHistory() {
+    log.innerHTML = '';
+    history.forEach(talk => {
+        addBubble(talk.role, talk.parts[0].text);
     });
     log.scrollTop = log.scrollHeight;
-});
+}
 
-async function send(){
+window.addEventListener('DOMContentLoaded', renderHistory);
+
+async function send() {
     const txt = input.value;
     if (!txt) return;
-    
-    const myPara = document.createElement('p');
-    myPara.className = 'chat-bubble';
-    myPara.innerHTML = `自分: ${parseMarkdown(txt)}`;
-    log.appendChild(myPara);
-    
+
+    addBubble('user', txt);
+
     input.value = '';
     log.scrollTop = log.scrollHeight;
-    //
-    const res = await fetch('/api/chat',{
+
+    const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            message: txt, 
+            message: txt,
             history: history,
             custom_prompt: currentPrompt
         })
     });
-    //
 
-    const aiPara = document.createElement('p');
-    aiPara.className = 'chat-bubble';
+    const aiPara = addBubble('model', '');
     aiPara.innerHTML = 'AI: ';
-    log.appendChild(aiPara);
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    let currentAiText = '';       
+    let currentAiText = '';
 
     while (true) {
         const { value, done } = await reader.read();
-        if (done) break; 
-        
+        if (done) break;
+
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
-        buffer = lines.pop(); 
+        buffer = lines.pop();
         for (const line of lines) {
-            if (!line.trim()) continue; 
-            
+            if (!line.trim()) continue;
+
             try {
                 const parsed = JSON.parse(line);
                 if (parsed.text) {
@@ -100,7 +98,7 @@ async function send(){
                     aiPara.innerHTML = `AI: ${parseMarkdown(currentAiText)}`;
                     log.scrollTop = log.scrollHeight;
                 }
-                
+
                 if (parsed.final_history) {
                     history = parsed.final_history;
                     localStorage.setItem('chat_history', JSON.stringify(history));
@@ -131,9 +129,9 @@ async function send(){
 
 function clearChat() {
     if (confirm('これまでの会話履歴をすべて削除しますか？')) {
-        localStorage.removeItem('chat_history'); 
-        history = [];                           
-        log.innerHTML = '';                      
+        localStorage.removeItem('chat_history');
+        history = [];
+        log.innerHTML = '';
     }
 }
 
@@ -144,22 +142,11 @@ function undoChat() {
     }
 
     if (confirm('最新の会話履歴を1往復分削除しますか？')) {
-        history.pop(); 
-        history.pop(); 
+        history.pop();
+        history.pop();
 
         localStorage.setItem('chat_history', JSON.stringify(history));
-        log.innerHTML = ''; 
-
-        history.forEach(talk => {
-            const role = talk.role === 'user' ? '自分' : 'AI';
-            const text = talk.parts[0].text; 
-            
-            const p = document.createElement('p');
-            p.className = 'chat-bubble';
-            p.innerHTML = `${role}: ${parseMarkdown(text)}`;
-            log.appendChild(p);
-        });
-        log.scrollTop = log.scrollHeight;
+        renderHistory();
     }
 }
 
@@ -170,7 +157,7 @@ async function wakeUpServer() {
     isServerWoken = true;
 
     console.log("起動");
-    
+
     try {
         await fetch('/api/ping');
         console.log("サーバーが正常に起動しました。");
@@ -182,12 +169,10 @@ async function wakeUpServer() {
 input.addEventListener('focus', wakeUpServer);
 input.addEventListener('click', wakeUpServer);
 
-
 const DOUBLE_ENTER_INTERVAL = 400;
 let lastEnterTime = 0;
 
 input.addEventListener('keydown', (e) => {
-
     if (e.key !== 'Enter') {
         lastEnterTime = 0;
         return;
@@ -204,7 +189,7 @@ input.addEventListener('keydown', (e) => {
             input.value = input.value.slice(0, pos - 1) + input.value.slice(pos);
         }
         send();
-    } else { 
+    } else {
         lastEnterTime = now;
     }
 });
