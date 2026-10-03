@@ -7,8 +7,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (setPromptBtn && promptInput) {
         setPromptBtn.addEventListener('click', () => {
             currentPrompt = promptInput.value.trim();
-            if (currentPrompt.length > 30) {
-                alert("プロンプトは30文字以内で入力してください。");
+            if (currentPrompt.length > 60) {
+                alert("プロンプトは60文字以内で入力してください。");
                 return;
             }
             alert("プロンプト適応済み");
@@ -39,8 +39,10 @@ window.addEventListener('DOMContentLoaded', () => {
     history.forEach(talk => {
         const role = talk.role === 'user' ? '自分' : 'AI';
         const text = talk.parts[0].text; 
-        
         const p = document.createElement('p');
+
+        const bubbleClass = talk.role === 'user' ? 'user-bubble' : 'ai-bubble';
+        
         p.className = 'chat-bubble';
         p.innerHTML = `${role}: ${parseMarkdown(text)}`;
         log.appendChild(p);
@@ -181,7 +183,7 @@ input.addEventListener('focus', wakeUpServer);
 input.addEventListener('click', wakeUpServer);
 
 
-const DOUBLE_ENTER_INTERVAL = 500;
+const DOUBLE_ENTER_INTERVAL = 400;
 let lastEnterTime = 0;
 
 input.addEventListener('keydown', (e) => {
