@@ -179,3 +179,33 @@ async function wakeUpServer() {
 }
 input.addEventListener('focus', wakeUpServer);
 input.addEventListener('click', wakeUpServer);
+
+
+const DOUBLE_ENTER_INTERVAL = 400;
+let lastEnterTime = 0;
+
+input.addEventListener('keydown', (e) => {
+
+    if (e.key !== 'Enter') {
+        lastEnterTime = 0;
+        return;
+    }
+
+    if (e.isComposing || e.keyCode === 229) return;
+
+    const now = Date.now();
+
+    if (lastEnterTime !== 0 && now - lastEnterTime <= DOUBLE_ENTER_INTERVAL) {
+        e.preventDefault();
+        lastEnterTime = 0;
+        const pos = input.selectionStart;
+        if (input.value[pos - 1] === '\n') {
+            input.value = input.value.slice(0, pos - 1) + input.value.slice(pos);
+        }
+
+        send();
+    } else {
+      
+        lastEnterTime = now;
+    }
+});
