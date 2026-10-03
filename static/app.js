@@ -169,7 +169,7 @@ async function wakeUpServer() {
 input.addEventListener('focus', wakeUpServer);
 input.addEventListener('click', wakeUpServer);
 
-const DOUBLE_ENTER_INTERVAL = 400;
+const DOUBLE_ENTER_INTERVAL = 700;
 let lastEnterTime = 0;
 
 input.addEventListener('keydown', (e) => {
