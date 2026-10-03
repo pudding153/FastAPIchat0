@@ -190,7 +190,6 @@ input.addEventListener('keydown', (e) => {
         lastEnterTime = 0;
         return;
     }
-
     if (e.isComposing || e.keyCode === 229) return;
 
     const now = Date.now();
@@ -202,10 +201,8 @@ input.addEventListener('keydown', (e) => {
         if (input.value[pos - 1] === '\n') {
             input.value = input.value.slice(0, pos - 1) + input.value.slice(pos);
         }
-
         send();
-    } else {
-      
+    } else { 
         lastEnterTime = now;
     }
 });
