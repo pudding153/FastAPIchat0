@@ -310,7 +310,7 @@ async def chat_endpoint(data: ChatRequest):
             s += f"\n\n追加のプロンプト\n{data.custom_prompt.strip()}"
         ai_config = types.GenerateContentConfig(
             system_instruction=s,
-            max_output_tokens=300,
+            max_output_tokens=450,
             thinking_config=types.ThinkingConfig(thinking_level="MINIMAL"),
             tools=[types.Tool(google_search=types.GoogleSearch())],
         )
