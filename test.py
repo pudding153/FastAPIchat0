@@ -283,7 +283,6 @@ async def chat_endpoint(data: ChatRequest):
         talk = copy.deepcopy(data.history)
         talk.append({"role": "user", "parts": [{"text": message}]})
         MAX_HISTORY_TOKENS = 1999
-        MAX_HISTORY_TOKENS = 2000
 
         def count_approx_tokens(chat_history):
             total = 0
@@ -312,7 +311,7 @@ async def chat_endpoint(data: ChatRequest):
         ai_config = types.GenerateContentConfig(
             system_instruction=s,
             max_output_tokens=300,
-            thinking_config=types.ThinkingConfig(thinking_level="LOW"),
+            thinking_config=types.ThinkingConfig(thinking_level="MINIMAL"),
             tools=[types.Tool(google_search=types.GoogleSearch())],
         )
 
