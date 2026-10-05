@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 import copy
 import os
+import time
 import logging
 import json
 import re
@@ -34,19 +35,93 @@ except Exception as e:
     logger.error(f"データディレクトリ作成失敗: {e}")
 
 DATA_FILE = DATA_DIR / "token_data.json"
-
-
 TOKEN_LOG_FILE = DATA_DIR / "token_usage.log"
 
 
+_LATENCY_PART = (
+    r"(?:[^\n]*?latency=(?P<latency>\d+(?:\.\d+)?),\s*ttft=(?P<ttft>\d+(?:\.\d+)?)"
+    r"(?:,\s*search=(?P<search>[01]))?)?"
+)
 TOKEN_LOG_PATTERN = re.compile(
-    r"\[TOKEN USAGE\] input=(?P<input>\d+),\s*output=(?P<output>\d+)",
+    r"\[TOKEN USAGE\] input=(?P<input>\d+),\s*output=(?P<output>\d+)" + _LATENCY_PART,
+    re.IGNORECASE,
+)
+TOKEN_LOG_WITH_DATE_PATTERN = re.compile(
+    r"(?P<date>\d{4}-\d{2}-\d{2})[^\n]*?\[TOKEN USAGE\] input=(?P<input>\d+),\s*output=(?P<output>\d+)"
+    + _LATENCY_PART,
     re.IGNORECASE,
 )
 DATE_PATTERN = re.compile(r"(?P<date>\d{4}-\d{2}-\d{2})")
 
+
 def get_current_month() -> str:
     return datetime.now().strftime("%Y-%m")
+
+
+def new_stats() -> dict:
+    """1か月分の統計の初期値。
+    *_latency / *_ttft は秒の合計値。平均 = 合計 / *_count (または latency_count)。
+    """
+    return {
+        "total_input": 0,
+        "total_output": 0,
+        "request_count": 0,
+
+        "total_latency": 0.0,
+        "total_ttft": 0.0,
+        "latency_count": 0,
+ 
+        "search_latency": 0.0,
+        "search_ttft": 0.0,
+        "search_count": 0,
+
+        "nosearch_latency": 0.0,
+        "nosearch_ttft": 0.0,
+        "nosearch_count": 0,
+    }
+
+
+def fill_missing(stats: dict) -> dict:
+    """古いデータに無い項目を補完する"""
+    for k, v in new_stats().items():
+        stats.setdefault(k, v)
+    return stats
+
+
+def add_sample(
+    stats: dict,
+    input_tokens: int,
+    output_tokens: int,
+    latency: Optional[float] = None,
+    ttft: Optional[float] = None,
+    searched: Optional[bool] = None,
+):
+    """1リクエスト分を統計に加算する。
+    latency が None (古いログなど) の場合はトークン数・リクエスト数だけ加算する。
+    searched が None の場合は「全体」にだけ加算し、検索あり/なしには入れない。
+    """
+    fill_missing(stats)
+    stats["total_input"] += input_tokens
+    stats["total_output"] += output_tokens
+    stats["request_count"] += 1
+
+    if latency is None:
+        return
+    ttft = latency if ttft is None else ttft
+
+    stats["total_latency"] += latency
+    stats["total_ttft"] += ttft
+    stats["latency_count"] += 1
+
+    if searched is True:
+        stats["search_latency"] += latency
+        stats["search_ttft"] += ttft
+        stats["search_count"] += 1
+    elif searched is False:
+        stats["nosearch_latency"] += latency
+        stats["nosearch_ttft"] += ttft
+        stats["nosearch_count"] += 1
+
 
 def load_data() -> dict:
     if DATA_FILE.exists():
@@ -57,13 +132,10 @@ def load_data() -> dict:
             logger.error(f"データ読み込み失敗: {e}")
     return {
         "current_month": get_current_month(),
-        "current": {
-            "total_input": 0,
-            "total_output": 0,
-            "request_count": 0,
-        },
+        "current": new_stats(),
         "history": {},
     }
+
 
 def save_data(data: dict):
     try:
@@ -72,21 +144,23 @@ def save_data(data: dict):
     except Exception as e:
         logger.error(f"データ保存失敗: {e}")
 
+
 def ensure_current_month(data: dict) -> dict:
     current = get_current_month()
     if data.get("current_month") != current:
         prev_month = data.get("current_month")
         if prev_month and data.get("current"):
+            data.setdefault("history", {})
             data["history"][prev_month] = data["current"].copy()
             logger.info(f"月次リセット: {prev_month} を履歴に保存しました")
         data["current_month"] = current
-        data["current"] = {
-            "total_input": 0,
-            "total_output": 0,
-            "request_count": 0,
-        }
+        data["current"] = new_stats()
         save_data(data)
+    data.setdefault("current", new_stats())
+    data.setdefault("history", {})
+    fill_missing(data["current"])
     return data
+
 
 token_data = load_data()
 token_data = ensure_current_month(token_data)
@@ -99,22 +173,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=400)
     history: list = []
     custom_prompt: Optional[str] = Field(default="", max_length=60)
 
+
 class RestoreRequest(BaseModel):
     logs: str
     reset_current: bool = False
 
+
+def match_to_sample(month: str, m: "re.Match") -> tuple:
+    """正規表現のマッチ結果を (月, input, output, latency, ttft, searched) に変換"""
+    lat = m.group("latency")
+    ttft = m.group("ttft")
+    s = m.group("search")
+    return (
+        month,
+        int(m.group("input")),
+        int(m.group("output")),
+        float(lat) if lat is not None else None,
+        float(ttft) if ttft is not None else None,
+        (s == "1") if s is not None else None,
+    )
+
+
 def apply_token_matches_to_data(matches_with_month, reset_current: bool):
     global token_data
-    monthly = defaultdict(lambda: {"total_input": 0, "total_output": 0, "request_count": 0})
-    for month, inp, out in matches_with_month:
-        monthly[month]["total_input"] += inp
-        monthly[month]["total_output"] += out
-        monthly[month]["request_count"] += 1
+    monthly = defaultdict(new_stats)
+    for month, inp, out, lat, ttft, searched in matches_with_month:
+        add_sample(monthly[month], inp, out, lat, ttft, searched)
 
     token_data = ensure_current_month(token_data)
     current_month = get_current_month()
@@ -128,26 +218,36 @@ def apply_token_matches_to_data(matches_with_month, reset_current: bool):
         if reset_current:
             token_data["current"] = monthly[current_month]
         else:
-            cur = token_data["current"]
+            cur = fill_missing(token_data["current"])
             src = monthly[current_month]
-            cur["total_input"] += src["total_input"]
-            cur["total_output"] += src["total_output"]
-            cur["request_count"] += src["request_count"]
+            for k, v in src.items():
+                cur[k] = cur.get(k, 0) + v
 
     save_data(token_data)
     return monthly
 
 
-def append_token_log_line(input_tokens: int, output_tokens: int):
+def append_token_log_line(
+    input_tokens: int,
+    output_tokens: int,
+    latency: Optional[float] = None,
+    ttft: Optional[float] = None,
+    searched: Optional[bool] = None,
+):
     try:
         line = (
             f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
-            f"[TOKEN USAGE] input={input_tokens}, output={output_tokens}\n"
+            f"[TOKEN USAGE] input={input_tokens}, output={output_tokens}"
         )
+        if latency is not None:
+            line += f", latency={latency:.3f}, ttft={(ttft if ttft is not None else latency):.3f}"
+            if searched is not None:
+                line += f", search={1 if searched else 0}"
         with open(TOKEN_LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(line)
+            f.write(line + "\n")
     except Exception as e:
         logger.error(f"トークンログ書き込み失敗: {e}")
+
 
 def read_local_token_logs(days: int = 365) -> list:
     if not TOKEN_LOG_FILE.exists():
@@ -159,14 +259,13 @@ def read_local_token_logs(days: int = 365) -> list:
         with open(TOKEN_LOG_FILE, "r", encoding="utf-8") as f:
             for line in f:
                 dm = DATE_PATTERN.search(line)
-              
-
                 if dm and dm.group("date") < cutoff_date:
                     continue
                 lines.append(line)
     except Exception as e:
         logger.error(f"トークンログ読み込み失敗: {e}")
     return lines
+
 
 def append_matched_lines_to_disk(raw_lines: list) -> int:
     if not raw_lines:
@@ -190,9 +289,25 @@ def append_matched_lines_to_disk(raw_lines: list) -> int:
         return 0
 
 
+def chunk_used_search(chunk) -> bool:
+    """このチャンクにGoogle検索(グラウンディング)の痕跡があるか"""
+    try:
+        for cand in (chunk.candidates or []):
+            gm = getattr(cand, "grounding_metadata", None)
+            if gm and (
+                getattr(gm, "web_search_queries", None)
+                or getattr(gm, "grounding_chunks", None)
+            ):
+                return True
+    except Exception:
+        pass
+    return False
+
+
 @app.get("/api/ping")
 async def ping_endpoint():
     return {"status": "ok"}
+
 
 @app.get("/api/token-stats")
 async def get_token_stats():
@@ -200,45 +315,33 @@ async def get_token_stats():
     token_data = ensure_current_month(token_data)
     return token_data["current"]
 
+
 @app.get("/api/token-stats/history")
 async def get_token_history():
     global token_data
     token_data = ensure_current_month(token_data)
     history_list = []
     for month, stats in token_data.get("history", {}).items():
-        history_list.append(
-            {
-                "month": month,
-                "total_input": stats.get("total_input", 0),
-                "total_output": stats.get("total_output", 0),
-                "request_count": stats.get("request_count", 0),
-            }
-        )
+        item = {**new_stats(), **stats}
+        item["month"] = month
+        history_list.append(item)
     history_list.sort(key=lambda x: x["month"], reverse=True)
     return history_list
+
 
 @app.post("/api/token-stats/restore")
 async def restore_from_logs(req: RestoreRequest):
     matches_with_month = []
-
     raw_lines = []
 
-    pattern = re.compile(
-        r"(?P<date>\d{4}-\d{2}-\d{2}).*?\[TOKEN USAGE\] input=(?P<input>\d+),\s*output=(?P<output>\d+)",
-        re.IGNORECASE,
-    )
-    for m in pattern.finditer(req.logs):
-        matches_with_month.append(
-            (m.group("date")[:7], int(m.group("input")), int(m.group("output")))
-        )
+    for m in TOKEN_LOG_WITH_DATE_PATTERN.finditer(req.logs):
+        matches_with_month.append(match_to_sample(m.group("date")[:7], m))
         raw_lines.append(m.group(0))
     if not matches_with_month:
         raise HTTPException(status_code=400, detail="TOKEN USAGE の行が見つかりませんでした")
     monthly = apply_token_matches_to_data(matches_with_month, reset_current=req.reset_current)
 
-
     written = append_matched_lines_to_disk(raw_lines)
-
 
     return {
         "restored_months": sorted(list(monthly.keys()), reverse=True),
@@ -259,7 +362,7 @@ async def restore_from_render_logs(reset_current: bool = True, days: int = 365):
             continue
         dm = DATE_PATTERN.search(line)
         month = dm.group("date")[:7] if dm else get_current_month()
-        matches_with_month.append((month, int(m.group("input")), int(m.group("output"))))
+        matches_with_month.append(match_to_sample(month, m))
 
     if not matches_with_month:
         raise HTTPException(status_code=404, detail="token_usage.log に TOKEN USAGE の記録が見つかりませんでした")
@@ -316,8 +419,12 @@ async def chat_endpoint(data: ChatRequest):
         )
 
         async def event_generator():
+            global token_data
             nonlocal full_reply
             usage_info = None
+            used_search = False
+            start = time.perf_counter()    
+            first_token_at = None          
             try:
                 async for chunk in await client.aio.models.generate_content_stream(
                     contents=talk,
@@ -325,30 +432,41 @@ async def chat_endpoint(data: ChatRequest):
                     config=ai_config,
                 ):
                     if chunk.text:
+                        if first_token_at is None:
+                            first_token_at = time.perf_counter()
                         full_reply += chunk.text
                         yield json.dumps({"text": chunk.text}, ensure_ascii=False) + "\n"
                     if chunk.usage_metadata:
                         usage_info = chunk.usage_metadata
+                    if not used_search and chunk_used_search(chunk):
+                        used_search = True
+                end = time.perf_counter()
+                latency = end - start
+                ttft = (first_token_at - start) if first_token_at is not None else latency
+
                 if usage_info:
-                    global token_data
                     token_data = ensure_current_month(token_data)
                     input_tokens = usage_info.prompt_token_count or 0
                     output_tokens = usage_info.candidates_token_count or 0
-                    token_data["current"]["total_input"] += input_tokens
-                    token_data["current"]["total_output"] += output_tokens
-                    token_data["current"]["request_count"] += 1
+
+                    add_sample(
+                        token_data["current"],
+                        input_tokens,
+                        output_tokens,
+                        latency,
+                        ttft,
+                        used_search,
+                    )
                     save_data(token_data)
 
-            
-
-                    append_token_log_line(input_tokens, output_tokens)
-                   
-
+                    append_token_log_line(input_tokens, output_tokens, latency, ttft, used_search)
 
                     logger.info(
                         f"[TOKEN USAGE] input={input_tokens}, "
                         f"output={output_tokens}, "
-                        f"total={usage_info.total_token_count}"
+                        f"total={usage_info.total_token_count}, "
+                        f"latency={latency:.3f}, ttft={ttft:.3f}, "
+                        f"search={1 if used_search else 0}"
                     )
                 else:
                     logger.info("[TOKEN USAGE] usage_metadata not found in stream")
@@ -374,5 +492,6 @@ async def chat_endpoint(data: ChatRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "error", "detail": str(e)},
         )
+
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
