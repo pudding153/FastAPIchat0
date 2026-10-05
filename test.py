@@ -70,7 +70,7 @@ def new_stats() -> dict:
         "total_latency": 0.0,
         "total_ttft": 0.0,
         "latency_count": 0,
- 
+
         "search_latency": 0.0,
         "search_ttft": 0.0,
         "search_count": 0,
@@ -289,19 +289,28 @@ def append_matched_lines_to_disk(raw_lines: list) -> int:
         return 0
 
 
-def chunk_used_search(chunk) -> bool:
-    """このチャンクにGoogle検索(グラウンディング)の痕跡があるか"""
+def get_search_queries(chunk) -> Optional[list]:
+    """このチャンクにGoogle検索(グラウンディング)の痕跡があれば、検索クエリのリストを返す。
+    痕跡が無ければ None。クエリが取れない場合でも痕跡があれば [] を返す。
+    """
     try:
         for cand in (chunk.candidates or []):
             gm = getattr(cand, "grounding_metadata", None)
-            if gm and (
-                getattr(gm, "web_search_queries", None)
-                or getattr(gm, "grounding_chunks", None)
-            ):
-                return True
+            if not gm:
+                continue
+            queries = list(getattr(gm, "web_search_queries", None) or [])
+            if queries:
+                return queries
+            if getattr(gm, "grounding_chunks", None):
+                return []
     except Exception:
         pass
-    return False
+    return None
+
+
+def chunk_used_search(chunk) -> bool:
+    """このチャンクにGoogle検索(グラウンディング)の痕跡があるか"""
+    return get_search_queries(chunk) is not None
 
 
 @app.get("/api/ping")
@@ -418,28 +427,40 @@ async def chat_endpoint(data: ChatRequest):
             tools=[types.Tool(google_search=types.GoogleSearch())],
         )
 
+        def ndjson(obj: dict) -> str:
+            return json.dumps(obj, ensure_ascii=False) + "\n"
+
         async def event_generator():
             global token_data
             nonlocal full_reply
             usage_info = None
             used_search = False
-            start = time.perf_counter()    
-            first_token_at = None          
+            start = time.perf_counter()
+            first_token_at = None
             try:
+
+                yield ndjson({"status": "thinking"})
+
                 async for chunk in await client.aio.models.generate_content_stream(
                     contents=talk,
                     model="gemini-3.1-flash-lite",
                     config=ai_config,
                 ):
+
+                    if not used_search:
+                        queries = get_search_queries(chunk)
+                        if queries is not None:
+                            used_search = True
+                            yield ndjson({"status": "searching", "queries": queries})
+
                     if chunk.text:
                         if first_token_at is None:
                             first_token_at = time.perf_counter()
                         full_reply += chunk.text
-                        yield json.dumps({"text": chunk.text}, ensure_ascii=False) + "\n"
+                        yield ndjson({"text": chunk.text})
                     if chunk.usage_metadata:
                         usage_info = chunk.usage_metadata
-                    if not used_search and chunk_used_search(chunk):
-                        used_search = True
+
                 end = time.perf_counter()
                 latency = end - start
                 ttft = (first_token_at - start) if first_token_at is not None else latency
@@ -471,14 +492,21 @@ async def chat_endpoint(data: ChatRequest):
                 else:
                     logger.info("[TOKEN USAGE] usage_metadata not found in stream")
                 full_history.append({"role": "model", "parts": [{"text": full_reply}]})
-                yield json.dumps({"final_history": full_history}, ensure_ascii=False) + "\n"
+                yield ndjson({"final_history": full_history})
             except Exception as e:
                 logger.error(f"Stream Error: {e}")
-                yield json.dumps({"error": "Stream interrupted"}) + "\n"
+                yield ndjson({"error": "Stream interrupted"})
                 full_history.append({"role": "model", "parts": [{"text": full_reply}]})
-                yield json.dumps({"final_history": full_history}, ensure_ascii=False) + "\n"
+                yield ndjson({"final_history": full_history})
 
-        return StreamingResponse(event_generator(), media_type="application/x-ndjson")
+        return StreamingResponse(
+            event_generator(),
+            media_type="application/x-ndjson",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",  
+            },
+        )
 
     except APIError as e:
         logger.error(f"Gemini API Error: {e}")
