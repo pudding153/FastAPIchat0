@@ -17,14 +17,18 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-function parseMarkdown(text) {
-    if (!text) return ``;
-    let safeText = text
+function escapeHtml(text) {
+    return String(text)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
+}
+
+function parseMarkdown(text) {
+    if (!text) return ``;
+    let safeText = escapeHtml(text);
 
     safeText = safeText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     safeText = safeText.replace(/__(.*?)__/g, '<strong>$1</strong>');
@@ -54,6 +58,11 @@ function renderHistory() {
 
 window.addEventListener('DOMContentLoaded', renderHistory);
 
+
+function statusHtml(icon, label) {
+    return `<span class="status-text"><span class="status-icon">${icon}</span>${escapeHtml(label)}<span class="dots"></span></span>`;
+}
+
 async function send() {
     const txt = input.value;
     if (!txt) return;
@@ -63,67 +72,102 @@ async function send() {
     input.value = '';
     log.scrollTop = log.scrollHeight;
 
-    const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            message: txt,
-            history: history,
-            custom_prompt: currentPrompt
-        })
-    });
-
     const aiPara = addBubble('model', '');
-    aiPara.innerHTML = 'AI: ';
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
     let currentAiText = '';
+    let searchQueries = null; 
+    let currentStatus = statusHtml('⏳', '送信中');
 
-    while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-        for (const line of lines) {
-            if (!line.trim()) continue;
-
-            try {
-                const parsed = JSON.parse(line);
-                if (parsed.text) {
-                    currentAiText += parsed.text;
-                    aiPara.innerHTML = `AI: ${parseMarkdown(currentAiText)}`;
-                    log.scrollTop = log.scrollHeight;
-                }
-
-                if (parsed.final_history) {
-                    history = parsed.final_history;
-                    localStorage.setItem('chat_history', JSON.stringify(history));
-                }
-            } catch (e) {
-                console.error("JSONパースエラー:", e, "対象の行:", line);
+    function render() {
+        if (currentAiText) {
+            let html = `AI: ${parseMarkdown(currentAiText)}`;
+            if (searchQueries !== null) {
+                const q = searchQueries.length
+                    ? `検索: ${searchQueries.map(escapeHtml).join(' / ')}`
+                    : '検索を使用';
+                html += `<div class="search-note">🔍 ${q}</div>`;
             }
+            aiPara.innerHTML = html;
+        } else {
+            aiPara.innerHTML = `AI: ${currentStatus}`;
         }
+        log.scrollTop = log.scrollHeight;
     }
 
-    if (buffer.trim()) {
+    function handleLine(line) {
+        if (!line.trim()) return;
         try {
-            const parsed = JSON.parse(buffer);
+            const parsed = JSON.parse(line);
+
+            if (parsed.status) {
+                if (parsed.status === 'thinking') {
+                    currentStatus = statusHtml('🤔', '推論中');
+                } else if (parsed.status === 'searching') {
+                    searchQueries = parsed.queries || [];
+                    const detail = searchQueries.length ? `「${searchQueries.join('」「')}」` : '';
+                    currentStatus = statusHtml('🔍', `検索中 ${detail}`.trim());
+                }
+                render();
+            }
+
             if (parsed.text) {
                 currentAiText += parsed.text;
-                aiPara.innerHTML = `AI: ${parseMarkdown(currentAiText)}`;
-                log.scrollTop = log.scrollHeight;
+                render();
             }
+
+            if (parsed.error) {
+                currentStatus = statusHtml('⚠️', 'エラーが発生しました');
+                if (!currentAiText) render();
+            }
+
             if (parsed.final_history) {
                 history = parsed.final_history;
                 localStorage.setItem('chat_history', JSON.stringify(history));
             }
         } catch (e) {
-            console.error("最終バッファのパースエラー:", e);
+            console.error("JSONパースエラー:", e, "対象の行:", line);
         }
+    }
+
+    render();
+
+    try {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: txt,
+                history: history,
+                custom_prompt: currentPrompt
+            })
+        });
+
+        if (!res.ok) {
+            aiPara.innerHTML = `AI: ⚠️ エラーが発生しました (${res.status})`;
+            return;
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) handleLine(line);
+        }
+
+        if (buffer.trim()) handleLine(buffer);
+
+        if (!currentAiText) {
+            aiPara.innerHTML = 'AI: (応答がありませんでした)';
+        }
+    } catch (e) {
+        console.error("通信エラー:", e);
+        aiPara.innerHTML = 'AI: ⚠️ 通信に失敗しました';
     }
 }
 
