@@ -91,12 +91,28 @@
   .detail-row {
     display: flex;
     justify-content: space-between;
+    gap: 12px;
     padding: 8px 0;
     border-bottom: 1px solid var(--border);
   }
   .detail-row:last-child { border-bottom: none; }
   .detail-row .k { color: var(--text-sub); }
-  .detail-row .v { font-weight: 600; }
+  .detail-row .v { font-weight: 600; text-align: right; }
+  .detail-sub {
+    margin-top: 10px;
+    padding: 12px 0 4px;
+    border-top: 2px solid var(--border);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .detail-row .v .sub {
+    display: block;
+    font-weight: 400;
+    font-size: 12px;
+    color: var(--text-sub);
+    margin-top: 2px;
+  }
   .error {
     color: #b3261e;
     font-size: 14px;
@@ -256,11 +272,27 @@
       <span class="k">合計金額（円）</span>
       <span class="v" id="cost-val">–</span>
     </div>
+
+    <div class="detail-sub">応答速度（全文表示まで / 最初の文字まで）</div>
+    <div class="detail-row">
+      <span class="k">全体</span>
+      <span class="v" id="lat-all">–</span>
+    </div>
+    <div class="detail-row">
+      <span class="k">検索あり</span>
+      <span class="v" id="lat-search">–</span>
+    </div>
+    <div class="detail-row">
+      <span class="k">検索なし</span>
+      <span class="v" id="lat-nosearch">–</span>
+    </div>
   </div>
 
   <div class="note">
     料金：入力 $0.25 / 100万トークン、出力 $1.50 / 100万トークン<br>
     為替：1 USD ≒ 156.3 円 で換算（参考値）<br>
+    応答速度：サーバーがAIにリクエストを送ってから、全文が出終わるまでの平均です。通信や画面描画の時間は含みません。<br>
+    ※ 応答速度は計測機能の追加後のリクエストのみが対象です（「N件」は計測できた件数）。<br>
     ※ 表示は毎月1日に自動リセットされます。過去月の履歴は下部に保存されます。
   </div>
 
@@ -324,6 +356,10 @@
     return "¥" + Math.round(n).toLocaleString("ja-JP");
   }
 
+  function fmtSec(n) {
+    return n.toFixed(2) + " 秒";
+  }
+
   function calcCost(input, output) {
     const costUsd = (input / 1_000_000) * INPUT_PRICE_PER_M + (output / 1_000_000) * OUTPUT_PRICE_PER_M;
     return costUsd * USD_TO_JPY;
@@ -333,6 +369,12 @@
     if (key === "current") return "当月";
     const [y, m] = key.split("-");
     return `${y}年${parseInt(m)}月`;
+  }
+
+  function latencyHtml(totalLatency, totalTtft, count) {
+    if (!count) return "–";
+    return `${fmtSec(totalLatency / count)} / ${fmtSec(totalTtft / count)}` +
+           `<span class="sub">${fmt(count)}件</span>`;
   }
 
   function renderStats(data) {
@@ -347,11 +389,22 @@
     document.getElementById("avg-input-val").textContent = count > 0 ? fmt(Math.round(input / count)) : "–";
     document.getElementById("avg-output-val").textContent = count > 0 ? fmt(Math.round(output / count)) : "–";
     document.getElementById("cost-val").textContent = fmtYen(calcCost(input, output));
+
+    document.getElementById("lat-all").innerHTML = latencyHtml(
+      data.total_latency || 0, data.total_ttft || 0, data.latency_count || 0
+    );
+    document.getElementById("lat-search").innerHTML = latencyHtml(
+      data.search_latency || 0, data.search_ttft || 0, data.search_count || 0
+    );
+    document.getElementById("lat-nosearch").innerHTML = latencyHtml(
+      data.nosearch_latency || 0, data.nosearch_ttft || 0, data.nosearch_count || 0
+    );
   }
 
   function renderHistory() {
     const tbody = document.getElementById("history-body");
     const select = document.getElementById("month-select");
+    const selected = select.value;
 
     select.innerHTML = `<option value="current">当月</option>`;
     historyData.forEach(item => {
@@ -360,6 +413,9 @@
       opt.textContent = formatMonthLabel(item.month);
       select.appendChild(opt);
     });
+    if ([...select.options].some(o => o.value === selected)) {
+      select.value = selected;
+    }
 
     if (historyData.length === 0) {
       tbody.innerHTML = `<tr><td colspan="5" class="empty">履歴がまだありません</td></tr>`;
