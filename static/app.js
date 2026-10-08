@@ -43,6 +43,9 @@ function addBubble(role, text) {
     const isUser = role === 'user';
     const p = document.createElement('p');
     p.className = isUser ? 'chat-bubble user-bubble' : 'chat-bubble ai-bubble';
+    if (!isUser && text) {
+        p.classList.add('reveal');
+    }
     p.innerHTML = `${isUser ? '自分' : 'AI'}: ${parseMarkdown(text)}`;
     log.appendChild(p);
     return p;
@@ -79,6 +82,8 @@ async function send() {
 
     function render() {
         if (currentAiText) {
+            aiPara.classList.add('reveal');
+
             let html = `AI: ${parseMarkdown(currentAiText)}`;
             if (searchQueries !== null) {
                 const q = searchQueries.length
