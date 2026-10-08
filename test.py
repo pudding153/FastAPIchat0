@@ -281,22 +281,69 @@ def append_matched_lines_to_disk(raw_lines: list) -> int:
     except Exception as e:
         logger.error(f"過去ログのディスク書き込み失敗: {e}")
         return 0
+TOOL_PART_ATTRS = (
+    "tool_call",
+    "tool_response",
+    "executable_code",
+    "code_execution_result",
+    "function_call",
+)
 
 
 def get_search_queries(chunk) -> Optional[list]:
+    """検索の痕跡があれば検索クエリのリストを返す(クエリ不明なら空リスト)。
+    痕跡がなければ None。
+    1. grounding_metadata(検索クエリ・参照元)
+    2. パーツ内のツール呼び出し系の属性
+    のどちらかがあれば検索中とみなす。
+    """
     try:
         for cand in (chunk.candidates or []):
             gm = getattr(cand, "grounding_metadata", None)
-            if not gm:
-                continue
-            queries = list(getattr(gm, "web_search_queries", None) or [])
-            if queries:
-                return queries
-            if getattr(gm, "grounding_chunks", None):
-                return []
+            if gm:
+                queries = list(getattr(gm, "web_search_queries", None) or [])
+                if queries:
+                    return queries
+                if getattr(gm, "grounding_chunks", None):
+                    return []
+
+            content = getattr(cand, "content", None)
+            for part in (getattr(content, "parts", None) or []):
+                for attr in TOOL_PART_ATTRS:
+                    if getattr(part, attr, None):
+                        return []
     except Exception:
         pass
     return None
+
+
+def describe_chunk(chunk) -> str:
+    """デバッグ用: チャンクにどんな要素が入っているかを短く文字列化"""
+    try:
+        info = []
+        cands = chunk.candidates or []
+        info.append(f"cands={len(cands)}")
+        for cand in cands:
+            content = getattr(cand, "content", None)
+            parts = getattr(content, "parts", None) or []
+            kinds = []
+            for part in parts:
+                k = []
+                if getattr(part, "text", None):
+                    k.append("thought" if getattr(part, "thought", None) else "text")
+                for attr in TOOL_PART_ATTRS:
+                    if getattr(part, attr, None):
+                        k.append(attr)
+                kinds.append("+".join(k) or "other")
+            info.append(f"parts={kinds}")
+            info.append(f"grounding={'Y' if getattr(cand, 'grounding_metadata', None) else 'N'}")
+            fr = getattr(cand, "finish_reason", None)
+            if fr:
+                info.append(f"finish={fr}")
+        info.append(f"usage={'Y' if chunk.usage_metadata else 'N'}")
+        return " ".join(info)
+    except Exception as e:
+        return f"describe_error={e}"
 
 
 def chunk_used_search(chunk) -> bool:
@@ -428,6 +475,7 @@ async def chat_endpoint(data: ChatRequest):
             used_search = False
             start = time.perf_counter()
             first_token_at = None
+            chunk_index = 0
             try:
 
                 yield ndjson({"status": "thinking"})
@@ -437,11 +485,15 @@ async def chat_endpoint(data: ChatRequest):
                     model="gemini-3.1-flash-lite",
                     config=ai_config,
                 ):
-
+                    elapsed = time.perf_counter() - start
+                    if chunk_index < 8:
+                        logger.info(f"[CHUNK] #{chunk_index} t={elapsed:.3f}s {describe_chunk(chunk)}")
+                    chunk_index += 1
                     if not used_search:
                         queries = get_search_queries(chunk)
                         if queries is not None:
                             used_search = True
+                            logger.info(f"[SEARCH DETECTED] t={elapsed:.3f}s queries={queries}")
                             yield ndjson({"status": "searching", "queries": queries})
 
                     if chunk.text:
@@ -495,7 +547,7 @@ async def chat_endpoint(data: ChatRequest):
             media_type="application/x-ndjson",
             headers={
                 "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",  
+                "X-Accel-Buffering": "no",
             },
         )
 
