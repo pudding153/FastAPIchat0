@@ -82,7 +82,6 @@ def new_stats() -> dict:
 
 
 def fill_missing(stats: dict) -> dict:
-    """古いデータに無い項目を補完する"""
     for k, v in new_stats().items():
         stats.setdefault(k, v)
     return stats
@@ -96,10 +95,6 @@ def add_sample(
     ttft: Optional[float] = None,
     searched: Optional[bool] = None,
 ):
-    """1リクエスト分を統計に加算する。
-    latency が None (古いログなど) の場合はトークン数・リクエスト数だけ加算する。
-    searched が None の場合は「全体」にだけ加算し、検索あり/なしには入れない。
-    """
     fill_missing(stats)
     stats["total_input"] += input_tokens
     stats["total_output"] += output_tokens
@@ -186,7 +181,6 @@ class RestoreRequest(BaseModel):
 
 
 def match_to_sample(month: str, m: "re.Match") -> tuple:
-    """正規表現のマッチ結果を (月, input, output, latency, ttft, searched) に変換"""
     lat = m.group("latency")
     ttft = m.group("ttft")
     s = m.group("search")
@@ -290,9 +284,6 @@ def append_matched_lines_to_disk(raw_lines: list) -> int:
 
 
 def get_search_queries(chunk) -> Optional[list]:
-    """このチャンクにGoogle検索(グラウンディング)の痕跡があれば、検索クエリのリストを返す。
-    痕跡が無ければ None。クエリが取れない場合でも痕跡があれば [] を返す。
-    """
     try:
         for cand in (chunk.candidates or []):
             gm = getattr(cand, "grounding_metadata", None)
