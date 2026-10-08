@@ -79,6 +79,7 @@ async function send() {
     let currentAiText = '';
     let searchQueries = null; 
     let currentStatus = statusHtml('⏳', '送信中');
+    let scrolledToBubbleTop = false; 
 
     function render() {
         if (currentAiText) {
@@ -92,10 +93,15 @@ async function send() {
                 html += `<div class="search-note">🔍 ${q}</div>`;
             }
             aiPara.innerHTML = html;
+            if (!scrolledToBubbleTop) {
+                scrolledToBubbleTop = true;
+                const offset = aiPara.getBoundingClientRect().top - log.getBoundingClientRect().top;
+                log.scrollTop += offset - 15; // 15 = ログのpadding分
+            }
         } else {
             aiPara.innerHTML = `AI: ${currentStatus}`;
+            log.scrollTop = log.scrollHeight;
         }
-        log.scrollTop = log.scrollHeight;
     }
 
     function handleLine(line) {
@@ -147,7 +153,7 @@ async function send() {
         });
 
         if (!res.ok) {
-            aiPara.innerHTML = `AI: ⚠️ エラーが発生しました (${res.status})`;
+            aiPara.innerHTML = `AI: ⚠️ メンテナンス中です、数分後に試してください (${res.status})`;
             return;
         }
 
