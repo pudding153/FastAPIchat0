@@ -67,12 +67,13 @@ body {
     align-self: flex-end;
     text-align: left;
 }
-
 .ai-bubble {
     background-color: #e5e5e5;
     align-self: flex-start;
     text-align: left;
     position: relative;
+}
+.ai-bubble.reveal {
     mask-image: linear-gradient(135deg, #000 -20%, transparent 30%);
     mask-size: 300% 300%;
     mask-position: 100% 100%;
