@@ -290,14 +290,7 @@ TOOL_PART_ATTRS = (
 )
 
 
-def get_search_queries(chunk) -> Optional[list]:
-    """検索の痕跡があれば検索クエリのリストを返す(クエリ不明なら空リスト)。
-    痕跡がなければ None。
-    1. grounding_metadata(検索クエリ・参照元)
-    2. パーツ内のツール呼び出し系の属性
-    のどちらかがあれば検索中とみなす。
-    """
-    try:
+def get_search_queries(chunk) -> Optional[list]:    try:
         for cand in (chunk.candidates or []):
             gm = getattr(cand, "grounding_metadata", None)
             if gm:
@@ -318,7 +311,6 @@ def get_search_queries(chunk) -> Optional[list]:
 
 
 def describe_chunk(chunk) -> str:
-    """デバッグ用: チャンクにどんな要素が入っているかを短く文字列化"""
     try:
         info = []
         cands = chunk.candidates or []
@@ -347,7 +339,6 @@ def describe_chunk(chunk) -> str:
 
 
 def chunk_used_search(chunk) -> bool:
-    """このチャンクにGoogle検索(グラウンディング)の痕跡があるか"""
     return get_search_queries(chunk) is not None
 
 
@@ -454,7 +445,7 @@ async def chat_endpoint(data: ChatRequest):
             "長時間の推論を行わず素早く正確に返答する 返答は必ず250文字以内で生成する 検索ブラウジングの使用は1回リクエストごとに1回以下しか使用しない 知識に無い単語やコンテンツは類似単語を知っていても必ず検索して再試飲情報を確認する"
             "挨拶や短文のリクエストに対しては短く返答する"
             "矛盾や嘘を無くし不確かな情報はわかりませんと答える、会話をAI側か終わらせようとしない"
-            "むやみに全肯定せず正しい意見伝える"
+            "むやみに全肯定せず正しい意見伝える　挨拶や基本的な会話では検索を使用しない"
         )
         if data.custom_prompt and data.custom_prompt.strip():
             s += f"\n\n追加のプロンプト\n{data.custom_prompt.strip()}"
