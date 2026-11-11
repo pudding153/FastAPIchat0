@@ -423,7 +423,7 @@ async def chat_endpoint(data: ChatRequest):
         full_history.append({"role": "user", "parts": [{"text": message}]})
         talk = copy.deepcopy(data.history)
         talk.append({"role": "user", "parts": [{"text": message}]})
-        MAX_HISTORY_TOKENS = 1999
+        MAX_HISTORY_TOKENS = 2000
 
         def count_approx_tokens(chat_history):
             total = 0
@@ -444,7 +444,7 @@ async def chat_endpoint(data: ChatRequest):
         s = (
             "長時間の推論を行わず素早く正確に返答する 返答は必ず250文字以内で生成する 検索の使用は1回リクエストごとに1回まで、または使用しない 知識に無い単語やコンテンツは類似単語を知っていても必ず最新情報を検索する"
             "矛盾や嘘を無くし不確かな情報はわかりませんと答える、会話をAI側から終わらせようとしない"
-            "むやみに全肯定せず正しい意見伝える"
+            "むやみに全肯定せず正しい意見伝える　過去の会話履歴を考慮して食い違いがないよう返答する"
         )
         if data.custom_prompt and data.custom_prompt.strip():
             s += f"\n\n追加のプロンプト\n{data.custom_prompt.strip()}"
